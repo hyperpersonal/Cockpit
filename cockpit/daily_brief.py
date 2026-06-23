@@ -2,8 +2,8 @@
 Flow: trading-day gate -> IBKR portfolio (or labeled gap) -> FMP universe quotes/news/earnings
 -> sub-theme RS vs SPY + breadth + lifecycle -> ranked NEW candidates -> vol*corr caps ($30k hard
 ceiling) -> cross-validate prices -> retrieve memory lessons -> Claude -> email.
-Section 1 (组合快照) shows ONLY real holdings w/ IBKR shares/cost/MV/unrealized P&L; the wider
-universe appears only as ranked new_candidates / subtheme strength. LLM writes in Chinese."""
+Section 1 shows ONLY real holdings w/ IBKR shares/cost/MV/unrealized P&L (P&L% from IBKR cost
+basis); a dedicated 选股雷达 section always lists the watchlist/candidates. LLM writes Chinese."""
 from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, crossval, llm, notify, calendars
@@ -32,18 +32,20 @@ def _hist_window(tickers, days=95):
     return out
 
 def _holdings_snapshot(holdings, quotes, setups, positions, net_liq):
-    """ONLY the real holdings, each merged: IBKR shares/cost/MV/unrealized P&L + price/technicals."""
+    """ONLY real holdings. P&L $ and P&L % BOTH derived from IBKR cost basis (consistent)."""
     snap = {}
     for t in holdings:
         s = setups.get(t, {})
         p = positions.get(t, {})
         q = quotes.get(t, {})
-        price = q.get("price")
+        price = q.get("price")                              # FMP last close (for technicals/day-chg)
         shares = p.get("shares"); avg = p.get("avg_price"); mv = p.get("mv")
-        pnl = (mv - shares * avg) if (mv and shares and avg) else None
-        pnl_pct = round((price / avg - 1) * 100, 1) if (price and avg) else None
-        snap[t] = {"shares": shares, "avg_cost": avg, "market_value": mv, "price": price,
-                   "day_chg_pct": q.get("changePercentage"),
+        cost_basis = shares * avg if (shares and avg) else None
+        pnl = (mv - cost_basis) if (mv and cost_basis) else None
+        pnl_pct = round(pnl / cost_basis * 100, 1) if (pnl is not None and cost_basis) else None
+        snap[t] = {"shares": shares, "avg_cost": avg, "market_value": round(mv, 0) if mv else None,
+                   "ibkr_price": round(mv / shares, 2) if (mv and shares) else None,
+                   "fmp_close": price, "day_chg_pct": q.get("changePercentage"),
                    "unreal_pnl": round(pnl, 0) if pnl is not None else None,
                    "unreal_pnl_pct": pnl_pct,
                    "pct_of_net_liq": round(mv / net_liq * 100, 1) if (mv and net_liq) else None,
@@ -88,7 +90,7 @@ def build() -> str:
              if s in quotes}
     subs = screener.subtheme_strength(CFG["subthemes"], quotes, bench_vs200)
     candidates = screener.rank_candidates(CFG["subthemes"], quotes, bench_vs200,
-                                          set(holdings) | exclude, top=8)
+                                          set(holdings) | exclude, top=10)
 
     mem = ReflectionMemory(str(ROOT / "state" / "reflection_memory.json"))
     weak = [t for t, s in setups.items() if not s["stage2"]]
@@ -104,20 +106,24 @@ def build() -> str:
     if phase == "non_trading":
         return "[%s] US market closed; no brief today." % today
 
-    prompt = ("Write a CHINESE daily brief from the REAL data below. Use the 8-section 宪法 format, "
-              "in this order: (1) 组合快照 -- show ONLY the names in holdings_snapshot (your 4 real "
-              "holdings); for each give shares/avg_cost/market_value/unreal_pnl/unreal_pnl_pct/"
-              "pct_of_net_liq + price/day_chg. Also show net_liq/cash/single_name_hard_cap_usd. "
-              "Do NOT list watchlist/universe names here. (2) 持仓关键消息 from news. (3) 大盘/宏观 "
-              "from macro + bench_vs200. (4) 财报/事件日历 from earnings_calendar. (5) 技术位/支撑阻力 "
-              "for the holdings (vs50/vs200/off_high/rs_vs_spy/posture in holdings_snapshot). "
-              "(6) 风控触发 from risk_caps (single_name_hard_cap_usd is the $ ceiling/name). "
-              "(7) 今日操作提示 with a 满足/注意/不满足 checklist; surface top new_candidates "
-              "(by subtheme/score) as ROTATION ideas, clearly labeled NOT held. (8) 待验证 -- mark any "
-              "number not in cross_validation as 待验证. Obey phase_rule. Never output buy/sell orders. "
-              "Do not use prior knowledge for current prices.\n\nDATA(JSON):\n"
-              + json.dumps(bundle, ensure_ascii=False, default=str)[:90000])
-    return llm.run(prompt, model=CFG["models"]["daily"], max_tokens=3800)
+    prompt = ("Write a CHINESE daily brief from the REAL data below. 9 sections in order:\n"
+              "(1) 组合快照 -- ONLY holdings_snapshot names (your real holdings); per name give "
+              "shares/avg_cost/market_value/unreal_pnl/unreal_pnl_pct/pct_of_net_liq + fmp_close/day_chg. "
+              "Also net_liq/cash/single_name_hard_cap_usd. Do NOT list watchlist names here.\n"
+              "(2) 持仓关键消息 from news.\n(3) 大盘/宏观 from macro + bench_vs200.\n"
+              "(4) 财报/事件日历 from earnings_calendar.\n"
+              "(5) 技术位/支撑阻力 for holdings (vs50/vs200/off_high/rs_vs_spy/posture).\n"
+              "(6) 风控触发 from risk_caps (single_name_hard_cap_usd = $ ceiling/name; cap_usd = "
+              "vol*corr cap). State each holding's market_value vs its cap.\n"
+              "(7) 今日操作提示 -- per flagged holding a 满足/注意/不满足 checklist.\n"
+              "(8) 待验证 -- mark any number NOT in cross_validation as 待验证.\n"
+              "(9) 选股雷达/观察池 (MANDATORY, never omit) -- a table of ALL new_candidates "
+              "(ticker/subtheme/score/posture/vs50/vs200/off_high), explicitly NOT held; plus the "
+              "leading vs lagging subthemes from subthemes (rel_vs_spy/lifecycle/breadth/overheated). "
+              "This is the screening output -- always render it fully.\n"
+              "Obey phase_rule. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
+              "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:90000])
+    return llm.run(prompt, model=CFG["models"]["daily"], max_tokens=4600)
 
 def main():
     if not calendars.is_us_trading_day() and os.getenv("FORCE_RUN", "false").lower() != "true":
