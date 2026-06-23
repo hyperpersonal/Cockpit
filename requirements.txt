@@ -1,0 +1,9 @@
+requests>=2.31
+PyYAML>=6.0
+numpy>=1.26
+rank-bm25>=0.2.2
+exchange-calendars>=4.5
+anthropic>=0.40
+# IBKR: choose ONE adapter you wire up (see cockpit/ibkr.py)
+#   ib_insync>=0.9.86        # via IB Gateway/TWS
+#   or use IBKR Client Portal Web API / Flex Queries (requests-based)

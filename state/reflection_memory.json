@@ -1,0 +1,79 @@
+{
+  "_doc": "System reflection memory (TradingAgents memory.py style). situation->lesson, retrieved by BM25 similarity at each review/decision and injected so the system learns. Write hook (add/save) ready; v1 = seeded + manual append until closed-trade postmortems exist.",
+  "version": 1,
+  "updated": "2026-06-21",
+  "lessons": [
+    {
+      "id": "L1",
+      "situation": "A holding is down sharply after an earnings report, trading below its 50-day and 200-day moving averages in a downtrend, and I am tempted to add more to lower my average cost.",
+      "lesson": "Do NOT average down into a post-earnings breakdown without a fresh fundamental reason. ORCL was bought 250->230->214->202 into a -47%-off-high slide. Set a stop/review level; hold or cut per thesis, never add to a downtrend just to lower cost.",
+      "source": "session 2026-06; ORCL",
+      "tags": [
+        "averaging-down",
+        "stop-discipline",
+        "earnings",
+        "downtrend"
+      ]
+    },
+    {
+      "id": "L2",
+      "situation": "A leading sub-theme's ETF is 60-80% above its 200-day moving average and most constituent names are sitting at 52-week highs after a big run.",
+      "lesson": "Don't chase parabolic leaders; the theme is overheated/late-stage. Wait for a pullback or base; favor less-extended quality leaders or supply-chain chokepoints in a healthy pullback. (SMH +60% / SOXX +78% over 200d on 6/18; MU/SNDK/ALAB parabolic.)",
+      "source": "session 2026-06; semis",
+      "tags": [
+        "dont-chase",
+        "extension",
+        "theme-lifecycle",
+        "momentum"
+      ]
+    },
+    {
+      "id": "L3",
+      "situation": "Considering a large, well-covered mega-cap AI leader that is expensive on every valuation multiple but is the obvious main-line name everyone owns.",
+      "lesson": "It's a momentum/quality HOLD, not a Serenity asymmetric chokepoint - cognitive-gap alpha is low because it's the obvious shovel seller. Size per vol x correlation cap; don't expect microcap-style asymmetry. (AVGO: DCF -52%, EV/EBITDA 47x, but ROE 36%, main-line leader.)",
+      "source": "session 2026-06; AVGO",
+      "tags": [
+        "valuation",
+        "momentum-vs-chokepoint",
+        "serenity-lens",
+        "sizing"
+      ]
+    },
+    {
+      "id": "L4",
+      "situation": "I want to add a second semiconductor name alongside an existing semiconductor position.",
+      "lesson": "Check PAIRWISE correlation, not just average. NVDA-TSM ~0.74 over 6 weeks. Adding highly-correlated semis concentrates risk even if the average-correlation cap looks fine; let the correlation multiplier shrink the combined cap, and net new semis against existing NVDA exposure.",
+      "source": "session 2026-06; risk engine",
+      "tags": [
+        "correlation",
+        "concentration",
+        "position-sizing",
+        "semis"
+      ]
+    },
+    {
+      "id": "L5",
+      "situation": "A high-growth small-cap supply-chain name has a large active ATM (at-the-market offering) and/or heavy stock-based compensation.",
+      "lesson": "Treat a large active ATM + SBC as a structural disqualifier / price ceiling (Serenity #7): retail equity gets diluted to fund the buildout. Check SEC EDGAR for dilution terms. (IREN $6B ATM ~= 51% overhang -> explicit bear.)",
+      "source": "study notes; Serenity methodology",
+      "tags": [
+        "dilution",
+        "ATM",
+        "disqualifier",
+        "serenity"
+      ]
+    },
+    {
+      "id": "L6",
+      "situation": "Evaluating an early-stage / qualification-phase supply-chain name on its trailing TTM revenue and earnings.",
+      "lesson": "For qualification-stage names, model FORWARD TAM at the architectural inflection, not TTM revenue (Serenity #6: qualification precedes revenue). But cross-validate forward/contract claims against SEC EDGAR / 10-K and flag as to-verify before sizing up.",
+      "source": "study notes; Serenity methodology",
+      "tags": [
+        "qualification",
+        "forward-TAM",
+        "cross-validation",
+        "serenity"
+      ]
+    }
+  ]
+}

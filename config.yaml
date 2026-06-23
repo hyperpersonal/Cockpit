@@ -1,0 +1,57 @@
+# Cockpit 配置宪法（机器可读）。系统每次运行先读它。详见 配置宪法_CONFIG_v1.md
+account:
+  net_liq_fallback: 107670        # 仅在 IBKR 掉线时用的兜底净值；正常每次从 IBKR 取
+  total_assets_usd: 250000        # 总资产(Schwab 100k + IBKR 150k); 单票硬顶基数
+  schwab_core: { instrument: QQQ, target_usd: 100000, note: "被动长期，建仓策略待定" }
+
+strategy: momentum_mainline + serenity_chokepoint   # 跟热点、不强行分散
+
+holdings:                          # 主动仓真实标的（IBKR 票=吉祥物，已排除）
+  - { ticker: NVDA, role: "半导体/主线龙头" }
+  - { ticker: ORCL, role: "软件云/落后主线-减仓候选" }
+  - { ticker: MSFT, role: "软件云/落后" }
+  - { ticker: META, role: "广告通信/落后" }
+exclude: [IBKR]                    # 吉祥物，不计入分析
+
+# AI 供应链子板块地图（取自 Serenity theses.md）——选股自下而上的池
+subthemes:
+  semis_gpu_asic:   { etfs: [SMH, SOXX], names: [NVDA, AVGO, MRVL, AMD, TSM, ALAB, ARM, INTC] }
+  optical_cpo:      { etfs: [],          names: [LITE, COHR, AAOI, POET] }      # SIVE/IQE 海外/OTC 谨慎
+  compound_semi:    { etfs: [],          names: [AXTI, TSEM] }
+  memory_hbm:       { etfs: [],          names: [MU, SNDK, SIMO] }
+  neocloud:         { etfs: [],          names: [NBIS, CRWV, CIFR, WULF] }
+  power_grid:       { etfs: [XLU],       names: [VST, CEG] }
+  ai_software:      { etfs: [IGV],       names: [MSFT, ORCL, PLTR] }
+  big_tech:         { etfs: [XLK, QQQ],  names: [] }
+benchmark: SPY
+
+risk:                              # 移植 ai-hedge-fund risk_manager
+  vol_window_days: 60
+  corr_window_days: 90
+  single_name_hard_cap_pct_of_total: 12     # 后备硬顶
+  # 波动率→上限 与 相关性→乘数 见 risk.py（与源码一致）
+  no_chase_bias_threshold_pct: 5.0            # ZhuLinsen 默认；强趋势放宽 1.5x
+  dilution_atm_disqualifier: true            # Serenity #7（需人工/SEC 复核）
+
+data:
+  primary: FMP
+  positions: IBKR
+  cross_validate: [SEC_EDGAR, YAHOO, 10-K/Q]  # 重大数字必须核；单一来源标「待验证」
+  fail_open: true                             # 源失败→降级+标数据缺口，绝不阻塞/编造
+  news_max_age_days: 3
+
+schedule:
+  daily_brief_cron_utc: "0 16 * * 1-5"   # 中国周二–周六 00:00 = 美股周一–周五盘中
+  biweekly_review_cron_utc: "0 2 * * 6"  # 中国周六 10:00；脚本内判隔周
+  biweekly_anchor_date: "2026-06-27"     # 双周锚点（其后每14天）
+  skip_us_holidays: true                 # exchange-calendars XNYS
+
+models:
+  daily: claude-sonnet-4-6
+  biweekly: claude-opus-4-8
+  deep_dive: claude-opus-4-8
+
+redlines:
+  - 绝不自动下单/转账，只给提示，用户手动执行
+  - 非投资建议；不确定标「待验证」、不编造
+  - 陈述文件/数据前必须真读取（read-before-describing）
