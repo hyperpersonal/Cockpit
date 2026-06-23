@@ -2,16 +2,10 @@
 Two-step flow: SendRequest (token+queryId) -> ReferenceCode -> GetStatement (poll) -> parse.
 FAIL-OPEN: any error -> return None so the brief still runs and labels a data gap (never fabricates).
 
-You must (one-time):
-  1) Client Portal -> Settings -> Account Reporting -> Flex Queries:
-     create an ACTIVITY Flex Query, format=XML, period=Last Business Day (or Today),
-     enable sections:  Open Positions  +  Net Asset Value (a.k.a. Equity Summary in Base).
-     In Open Positions tick at least: symbol, position, markPrice, positionValue, costBasisPrice,
-       assetCategory. In NAV/Equity Summary tick: total, cash, reportDate.
-     Save -> open the (i) info icon -> copy the Query ID.
-  2) Client Portal -> Settings -> Account Reporting -> Flex Web Service: enable -> generate Token.
-  3) Put both in GitHub repo Secrets:  IBKR_FLEX_TOKEN , IBKR_FLEX_QUERY_ID  (do NOT commit them).
-"""
+IMPORTANT (dedupe): if the Flex Open Positions section has BOTH Summary and Lot level of detail,
+each symbol appears in MULTIPLE <OpenPosition> rows. We must NOT sum them (that doubles the
+position). Per symbol we keep ONE row: the SUMMARY row (or, if unlabeled, the row with the
+largest |position|, which is the aggregate)."""
 from __future__ import annotations
 import os, time, logging, xml.etree.ElementTree as ET
 import requests
@@ -37,35 +31,40 @@ def _fetch_xml() -> str | None:
             log.warning("IBKR SendRequest not Success: %s", r.text[:200]); return None
         ref = root.findtext("ReferenceCode")
         base = root.findtext("Url") or "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement"
-        for _ in range(8):                              # poll: statement may still be generating
+        for _ in range(8):
             g = requests.get(base, params={"t": token, "q": ref, "v": VER}, timeout=30)
             g.raise_for_status()
-            if "FlexQueryResponse" in g.text and "<OpenPosition" in g.text or "EquitySummary" in g.text:
+            if ("FlexQueryResponse" in g.text and "<OpenPosition" in g.text) or "EquitySummary" in g.text:
                 return g.text
             if "Statement generation in progress" in g.text or "<Status>Warn" in g.text:
                 time.sleep(5); continue
-            return g.text                               # got something parseable
+            return g.text
         return None
-    except Exception as e:                              # fail-open
+    except Exception as e:
         log.warning("IBKR fetch failed: %s", e); return None
 
 def _parse(xml: str) -> dict | None:
     try:
         root = ET.fromstring(xml)
-        positions = {}
-        for op in root.iter("OpenPosition"):
-            a = op.attrib
+        best = {}                                          # sym -> (rank, attrib) ; dedupe Summary vs Lot
+        for o in root.iter("OpenPosition"):
+            a = o.attrib
             sym = a.get("symbol")
             if not sym or a.get("assetCategory", "STK") not in ("STK", ""):
                 continue
             qty = _f(a.get("position"))
             if qty == 0:
                 continue
+            lod = (a.get("levelOfDetail") or "").upper()
+            rank = (1 if lod == "SUMMARY" else 0, abs(qty))   # prefer SUMMARY, else largest |qty| (aggregate)
+            if sym not in best or rank > best[sym][0]:
+                best[sym] = (rank, a)
+        positions = {}
+        for sym, (rank, a) in best.items():
+            qty = _f(a.get("position"))
             mv = _f(a.get("positionValue")) or _f(a.get("markPrice")) * qty
             avg = _f(a.get("costBasisPrice")) or (_f(a.get("costBasisMoney")) / qty if qty else 0.0)
-            p = positions.setdefault(sym, {"shares": 0.0, "avg_price": avg, "mv": 0.0})
-            p["shares"] += qty; p["mv"] += mv; p["avg_price"] = avg or p["avg_price"]
-        # NAV + cash: last EquitySummary row (by report date)
+            positions[sym] = {"shares": qty, "avg_price": avg, "mv": mv}
         net_liq = cash = 0.0
         rows = list(root.iter("EquitySummaryByReportDateInBase")) or list(root.iter("EquitySummaryInBase"))
         if rows:
