@@ -119,7 +119,6 @@ def main():
         body = "system degraded: biweekly review error (%s). check data/config." % e
     notify.send("biweekly review %s" % dt.date.today().isoformat(), body)
     print(body)
-    # TODO reflection: after a position closes, call mem.add(...)+mem.save() (needs realized return).
 
 if __name__ == "__main__":
     main()
