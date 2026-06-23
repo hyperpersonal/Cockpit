@@ -1,0 +1,35 @@
+name: 每日简报 Daily Brief
+on:
+  schedule:
+    - cron: "0 16 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      force_run: { description: "非交易日也跑", type: boolean, default: false }
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - name: Run daily brief
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          IBKR_FLEX_TOKEN: ${{ secrets.IBKR_FLEX_TOKEN }}
+          IBKR_FLEX_QUERY_ID: ${{ secrets.IBKR_FLEX_QUERY_ID }}
+          FORCE_RUN: ${{ inputs.force_run }}
+        run: python -m cockpit.daily_brief
+      - name: Persist updated memory
+        run: |
+          git config user.name "cockpit-bot"; git config user.email "bot@users.noreply.github.com"
+          git add state/ && git commit -m "memory update $(date -u +%F)" || echo "no changes"
+          git push || echo "push skipped"
