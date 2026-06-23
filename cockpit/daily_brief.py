@@ -1,9 +1,9 @@
 """Daily brief orchestrator. Runs ~US midday (China 00:00, Tue-Sat). Fail-open everywhere.
-Flow: trading-day gate -> IBKR portfolio (or labeled gap) -> FMP universe quotes/news/earnings
--> sub-theme RS vs SPY + breadth + lifecycle -> ranked NEW candidates -> EWMA vol x correlation
-(same-theme floored) caps with $30k hard ceiling -> per-holding REAL stop level + portfolio heat
-(open risk to stops) + dilution proxy -> append net_liq to NAV history (for biweekly perf) ->
-cross-validate -> memory lessons -> Claude -> email. LLM writes Chinese (9 sections)."""
+Flow: trading-day gate -> IBKR portfolio (or labeled gap) -> detect closed positions & auto-log a
+reflection lesson (B5) -> FMP universe quotes/news(age-filtered)/earnings -> sub-theme RS + breadth
++ lifecycle -> ranked candidates -> EWMA vol x correlation (same-theme floored) caps with $30k hard
+ceiling -> per-holding REAL stop + portfolio heat (open risk to stops) + dilution proxy -> append
+net_liq to NAV history -> cross-validate -> memory lessons -> Claude -> email. Chinese, 9 sections."""
 from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, crossval, llm, notify, calendars
@@ -29,7 +29,8 @@ def _universe() -> list:
     syms |= {h["ticker"] for h in CFG.get("holdings", [])}
     return sorted(syms)
 
-def _hist_window(tickers, days=380):
+def _hist_window(tickers, days=None):
+    days = days or CFG.get("risk", {}).get("hist_window_days", 380)
     frm = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     out = {}
     for t in tickers:
@@ -39,8 +40,6 @@ def _hist_window(tickers, days=380):
     return out
 
 def _append_nav(date_str, net_liq):
-    """Persist today's net_liq into state/nav_history.json (committed back by the workflow).
-    Feeds the biweekly performance-vs-benchmark calc. Fail-open."""
     p = ROOT / "state" / "nav_history.json"
     try:
         d = json.load(open(p, encoding="utf-8")) if p.exists() else {"navs": {}}
@@ -52,10 +51,39 @@ def _append_nav(date_str, net_liq):
     except Exception:
         pass
 
-def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution):
-    """B3 fix: stop_review_level is a REAL stop BELOW current price (highest of {200DMA, cost*0.8}
-    that is still below price); if price is already below all of them -> already_broken_down=True
-    (no usable technical stop above; discipline = evaluate trim). dist_to_stop_pct feeds heat."""
+def _reflect_on_closes(positions, exclude, mem, today):
+    """B5: compare to last run's positions; any name that left the book -> auto-add a reflection
+    lesson (closes the learning loop). Guard against IBKR glitches (only act if cur is non-empty)."""
+    p = ROOT / "state" / "last_positions.json"
+    prev = {}
+    try:
+        prev = json.load(open(p, encoding="utf-8")).get("positions", {})
+    except Exception:
+        pass
+    cur = {}
+    for t, d in positions.items():
+        if t in exclude:
+            continue
+        sh, av, mv = d.get("shares"), d.get("avg_price"), d.get("mv")
+        cur[t] = round((mv / (sh * av) - 1) * 100, 1) if (mv and sh and av) else None
+    closed = [t for t in prev if t not in cur]
+    if cur and closed:                                    # cur non-empty => fetch was real, not a glitch
+        for t in closed:
+            last = prev.get(t)
+            mem.add(situation="Closed/exited position %s (last unrealized %s%%)." % (t, last),
+                    lesson=("Position %s left the book at ~%s%%. Review: did the exit follow the thesis "
+                            "and stop discipline? Record the realized outcome and what to repeat/avoid." % (t, last)),
+                    source="auto: position-close detector", tags=["postmortem", "exit", t])
+        try: mem.save()
+        except Exception: pass
+    try:
+        json.dump({"date": today, "positions": cur}, open(p, "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    return closed
+
+def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dilution_on=True):
     snap = {}
     for t in holdings:
         s = setups.get(t, {})
@@ -82,7 +110,7 @@ def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution):
                    "stop_review_level": round(stop_level, 2) if stop_level else None,
                    "dist_to_stop_pct": dist_to_stop_pct, "already_broken_down": already_broken,
                    "dilution_yoy_pct": round(dil * 100, 1) if dil is not None else None,
-                   "dilution_flag": bool(dil is not None and dil > 0.05)}
+                   "dilution_flag": bool(dilution_on and dil is not None and dil > 0.05)}
     return snap
 
 def build() -> str:
@@ -97,12 +125,15 @@ def build() -> str:
     if bench in quotes and quotes[bench].get("priceAvg200"):
         bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
 
+    mem = ReflectionMemory(str(ROOT / "state" / "reflection_memory.json"))
     port = ibkr.get_portfolio()
+    closed = []
     if port:
         net_liq = port["net_liq"]; cash = port["cash"]; positions = port["positions"]
         cur_mv = {t: p["mv"] for t, p in positions.items() if t not in exclude}
         port_note = ""
-        _append_nav(today, net_liq)                       # NAV history for biweekly performance
+        _append_nav(today, net_liq)
+        closed = _reflect_on_closes(positions, exclude, mem, today)   # B5 auto-learn
     else:
         net_liq = CFG["account"]["net_liq_fallback"]; cash = 0.0
         positions = {}; cur_mv = {}
@@ -116,15 +147,20 @@ def build() -> str:
     setups = {t: screener.name_setup(t, quotes[t], CFG["risk"]["no_chase_bias_threshold_pct"], bench_vs200)
               for t in holdings if t in quotes}
     dilution = {t: fmp.shares_growth(t) for t in holdings}
-    holdings_snapshot = _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution)
-    # B2 fix: REAL portfolio heat = total $ at risk to stops / net liq (was wrongly sum of over-cap $)
+    dil_on = CFG.get("risk", {}).get("dilution_atm_disqualifier", True)
+    holdings_snapshot = _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dil_on)
     heat_usd = sum((d["market_value"] or 0) * (d["dist_to_stop_pct"] or 0) / 100.0
                    for d in holdings_snapshot.values())
     portfolio_heat_pct = round(heat_usd / net_liq * 100, 1) if net_liq else None
     broken = [t for t, d in holdings_snapshot.items() if d["already_broken_down"]]
 
     xval = {t: crossval.verify_price(t, quotes[t]["price"]) for t in holdings if t in quotes}
-    news = fmp.stock_news(holdings, limit=8)
+    maxage = CFG.get("data", {}).get("news_max_age_days", 3)
+    cutoff = (dt.date.today() - dt.timedelta(days=maxage)).isoformat()
+    def _recent(n):
+        d = str(n.get("publishedDate") or n.get("date") or "")[:10]
+        return (not d) or d >= cutoff
+    news = [n for n in fmp.stock_news(holdings, limit=25) if _recent(n)][:8]
     earn = {t: fmp.upcoming_earnings(t, today) for t in holdings}
     earn = {t: e for t, e in earn.items() if e}
     macro = {s: screener._ext(quotes[s]) for s in [bench, "QQQ", "SMH", "SOXX", "XLK", "IGV", "XLU"]
@@ -137,7 +173,6 @@ def build() -> str:
         q = quotes.get(c["ticker"], {}); px = q.get("price")
         c["size_1pct_stop8"] = risk.position_size(net_liq, px, px * 0.92, 1.0, maxpos_pct) if px else None
 
-    mem = ReflectionMemory(str(ROOT / "state" / "reflection_memory.json"))
     weak = [t for t, s in setups.items() if not s["stage2"]]
     situation = "Holdings " + ",".join(holdings) + "; weak/below-MA: %s; phase %s" % (weak, phase)
     lessons = mem.retrieve(situation, n=3)
@@ -145,32 +180,30 @@ def build() -> str:
     bundle = dict(date=today, phase=phase, phase_rule=calendars.PHASE_GUARDRAIL.get(phase, ""),
                   port_note=port_note, net_liq=net_liq, cash=cash, total_assets=total_assets,
                   single_name_hard_cap_usd=hard_cap_usd, portfolio_heat_pct=portfolio_heat_pct,
-                  broken_down_holdings=broken, benchmark=bench, bench_vs200=bench_vs200,
-                  holdings_snapshot=holdings_snapshot, risk_caps=caps, cross_validation=xval,
-                  earnings_calendar=earn, news=news[:8], macro=macro, subthemes=subs,
-                  new_candidates=candidates, lessons=lessons)
+                  broken_down_holdings=broken, closed_positions=closed, benchmark=bench,
+                  bench_vs200=bench_vs200, holdings_snapshot=holdings_snapshot, risk_caps=caps,
+                  cross_validation=xval, earnings_calendar=earn, news=news, macro=macro,
+                  subthemes=subs, new_candidates=candidates, lessons=lessons)
     if phase == "non_trading":
         return "[%s] US market closed; no brief today." % today
 
     prompt = ("Write a CHINESE daily brief from the REAL data below. 9 sections in order:\n"
               "(1) 组合快照 -- ONLY holdings_snapshot names; per name shares/avg_cost/market_value/"
               "unreal_pnl/unreal_pnl_pct/pct_of_net_liq + fmp_close/day_chg. Also net_liq/cash/"
-              "single_name_hard_cap_usd. Do NOT list watchlist names here.\n"
+              "single_name_hard_cap_usd. If closed_positions non-empty, note them. Do NOT list watchlist here.\n"
               "(2) 持仓关键消息 from news.\n(3) 大盘/宏观 from macro + bench_vs200.\n"
               "(4) 财报/事件日历 from earnings_calendar.\n"
-              "(5) 技术位/支撑阻力 for holdings (vs50/vs200/off_high/rs_vs_spy/posture). For each give "
-              "stop_review_level (a real stop BELOW price) + dist_to_stop_pct; if already_broken_down=true "
-              "say 已跌破技术位/成本止损，按纪律评估减仓 (no usable stop above).\n"
-              "(6) 风控触发 from risk_caps: market_value vs cap_usd (EWMA vol x corr) and vs "
-              "single_name_hard_cap_usd. **portfolio_heat_pct = total open risk to stops / net liq; keep "
-              "<6-8%** (if higher, flag over-heat). Note dilution_flag/dilution_yoy_pct (待SEC核 if flagged) "
-              "and broken_down_holdings.\n"
+              "(5) 技术位/支撑阻力: per holding vs50/vs200/off_high/rs_vs_spy/posture + stop_review_level "
+              "(real stop BELOW price) + dist_to_stop_pct; if already_broken_down=true say 已跌破技术位/"
+              "成本止损，按纪律评估减仓.\n"
+              "(6) 风控触发 from risk_caps (market_value vs cap_usd vs single_name_hard_cap_usd). "
+              "portfolio_heat_pct = open risk to stops / net liq, keep <6-8%. Note dilution_flag/"
+              "dilution_yoy_pct (待SEC核 if flagged) + broken_down_holdings.\n"
               "(7) 今日操作提示 -- per flagged holding a 满足/注意/不满足 checklist.\n"
               "(8) 待验证 -- mark any number NOT in cross_validation as 待验证.\n"
               "(9) 选股雷达/观察池 (MANDATORY) -- table of ALL new_candidates (ticker/subtheme/score/"
-              "posture/vs50/vs200/off_high + size_1pct_stop8.shares as ILLUSTRATIVE 1%-risk/stop=-8% size, "
-              "capped by hard limit), NOT held; plus leading vs lagging subthemes (rel_vs_spy/lifecycle/"
-              "breadth/overheated).\n"
+              "posture/vs50/vs200/off_high + size_1pct_stop8.shares as ILLUSTRATIVE 1%-risk/stop=-8% size), "
+              "NOT held; plus leading vs lagging subthemes (rel_vs_spy/lifecycle/breadth/overheated).\n"
               "Obey phase_rule. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
               "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:95000])
     return llm.run(prompt, model=CFG["models"]["daily"], max_tokens=4800)
