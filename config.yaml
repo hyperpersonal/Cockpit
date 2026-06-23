@@ -26,8 +26,7 @@ subthemes:
 benchmark: SPY
 
 risk:                              # 移植 ai-hedge-fund risk_manager
-  vol_window_days: 60
-  corr_window_days: 90
+  hist_window_days: 380                       # 取约1年日线给 EWMA波动率+长窗相关性（见 risk.py）
   single_name_hard_cap_pct_of_total: 12     # 后备硬顶
   # 波动率→上限 与 相关性→乘数 见 risk.py（与源码一致）
   no_chase_bias_threshold_pct: 5.0            # ZhuLinsen 默认；强趋势放宽 1.5x
