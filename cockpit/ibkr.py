@@ -70,11 +70,12 @@ def _parse(xml: str) -> dict | None:
         if rows:
             last = rows[-1].attrib
             net_liq = _f(last.get("total")); cash = _f(last.get("cash"))
+            as_of = last.get("reportDate")
         if not net_liq:
             net_liq = sum(p["mv"] for p in positions.values()) + cash
         if not positions and not net_liq:
             return None
-        return {"net_liq": net_liq, "cash": cash, "positions": positions}
+        return {"net_liq": net_liq, "cash": cash, "positions": positions, "as_of": locals().get("as_of")}
     except Exception as e:
         log.warning("IBKR parse failed: %s", e); return None
 
