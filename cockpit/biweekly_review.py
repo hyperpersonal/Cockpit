@@ -7,7 +7,7 @@ from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, llm, notify, calendars
 from .memory import ReflectionMemory
-from .daily_brief import _theme_of, _universe, _hist_window, _holdings_snapshot
+from .daily_brief import _theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -108,7 +108,8 @@ def build() -> str:
               "rotate toward (NOT held; with size_... not given here, just rank/posture).\n"
               "(7) 待验证. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
               "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:95000])
-    return llm.run(prompt, model=CFG["models"]["biweekly"], max_tokens=4800)
+    body = llm.run(prompt, model=CFG["models"]["biweekly"], max_tokens=4600)
+    return body + _candidates_md(candidates, subs)   # 选股雷达 code-rendered, guaranteed
 
 def main():
     if not _is_review_week() and os.getenv("FORCE_RUN", "false").lower() != "true":
