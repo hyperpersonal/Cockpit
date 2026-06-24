@@ -2,7 +2,12 @@
 Layer 1 (top-down): rank AI sub-themes by relative strength vs SPY + breadth + lifecycle.
 Layer 2 (bottom-up): scan the whole universe, rank NEW candidates by trend strength, no-chase,
 and theme leadership. Serenity 14-pt + VCP contraction remain LLM/manual (need fundamentals/
-intraday structure not pulled in the daily scan) -- flagged as such, not faked. ASCII-only."""
+intraday structure not pulled in the daily scan) -- flagged as such, not faked. ASCII-only.
+
+Lifecycle/overheated (B10, calibrated 2026-06-23): driven by SHORT-term extension (avg dist above
+50DMA = 乖离) + proximity to 52w high (avg off_high), NOT raw distance above the 200DMA (which in a
+year-long bull run flags everything 'exhausting'). 'overheated' = stretched above 50DMA AND near
+highs (parabolic/chase risk); a theme that ran far but has pulled back off its highs is NOT 'overheated'."""
 from __future__ import annotations
 from . import fmp
 
@@ -15,13 +20,18 @@ def _ext(q: dict) -> dict:
             "pos_52w": pos52, "chg": q.get("changePercentage"),
             "above200": bool(p and a200 and p > a200)}
 
-def _lifecycle(avg_vs200) -> str:
-    v = avg_vs200 or 0
-    if v < 10:  return "emerging"
-    if v < 25:  return "accelerating"
-    if v < 45:  return "trending"
-    if v < 70:  return "mature"
-    return "exhausting"
+def _lifecycle(avg_vs50, avg_off_high) -> str:
+    v = avg_vs50 if avg_vs50 is not None else 0.0
+    oh = avg_off_high if avg_off_high is not None else -99.0
+    if oh <= -20:             return "correcting"     # theme well (>20%) off its highs -> cooled
+    if v >= 25 and oh >= -6:  return "exhausting"     # very stretched above 50DMA AND at the highs
+    if v >= 10:               return "trending"       # solid uptrend
+    if v >= 0:                return "accelerating"    # early / just turning up
+    return "weak"                                     # below 50DMA on average
+
+def _overheated(avg_vs50, avg_off_high) -> bool:
+    return (avg_vs50 is not None and avg_vs50 >= 25
+            and avg_off_high is not None and avg_off_high >= -6)   # parabolic: stretched + at highs
 
 def quote_map(symbols: list) -> dict:
     return {q["symbol"]: q for q in fmp.batch_quote(sorted(set(symbols))) if "symbol" in q}
@@ -33,15 +43,17 @@ def subtheme_strength(subthemes: dict, quotes: dict, bench_vs200: float = 0.0) -
         ext = [_ext(quotes[s]) for s in syms if s in quotes and quotes[s].get("priceAvg200")]
         if not ext:
             continue
+        vs50 = [e["vs50"] for e in ext if e["vs50"] is not None]
         vs200 = [e["vs200"] for e in ext if e["vs200"] is not None]
         offhi = [e["off_high"] for e in ext if e["off_high"] is not None]
+        avg50 = round(sum(vs50) / len(vs50), 1) if vs50 else 0.0
         avg200 = round(sum(vs200) / len(vs200), 1) if vs200 else 0.0
+        avg_off = round(sum(offhi) / len(offhi), 1) if offhi else None
         breadth = round(sum(1 for e in ext if e["above200"]) / len(ext) * 100, 0)
-        rows.append({"subtheme": name, "avg_vs200": avg200,
-                     "rel_vs_spy": round(avg200 - bench_vs200, 1),     # relative strength vs SPY
-                     "breadth_above200_pct": breadth,
-                     "avg_off_high": round(sum(offhi) / len(offhi), 1) if offhi else None,
-                     "lifecycle": _lifecycle(avg200), "overheated": avg200 > 70,
+        rows.append({"subtheme": name, "avg_vs50": avg50, "avg_vs200": avg200,
+                     "rel_vs_spy": round(avg200 - bench_vs200, 1),     # relative strength vs SPY (200d)
+                     "breadth_above200_pct": breadth, "avg_off_high": avg_off,
+                     "lifecycle": _lifecycle(avg50, avg_off), "overheated": _overheated(avg50, avg_off),
                      "lead": (avg200 - bench_vs200) > 0, "members": len(ext)})
     return sorted(rows, key=lambda r: r["rel_vs_spy"], reverse=True)
 
@@ -55,8 +67,6 @@ def name_setup(symbol: str, q: dict, bias_threshold: float = 5.0, bench_vs200: f
 
 def rank_candidates(subthemes: dict, quotes: dict, bench_vs200: float,
                     exclude: set, top: int = 8) -> list:
-    """Scan every name in the universe, score, return top NEW candidates (not held/excluded).
-    Score favors: strong vs SPY, Stage 2, near (not far past) highs, not parabolic-extended."""
     sub_of = {}
     for name, v in subthemes.items():
         for s in v.get("names", []):
@@ -67,10 +77,10 @@ def rank_candidates(subthemes: dict, quotes: dict, bench_vs200: float,
             continue
         st = name_setup(s, quotes[s], bench_vs200=bench_vs200)
         if not st["stage2"]:
-            continue                                       # only uptrends
-        score = (st["rs_vs_spy"] or 0)                     # relative strength vs SPY
-        if st["chasing"]:        score -= 30               # penalize chasing
-        if (st["off_high"] or -99) > -8: score -= 10       # right at highs = less room
+            continue
+        score = (st["rs_vs_spy"] or 0)
+        if st["chasing"]:        score -= 30
+        if (st["off_high"] or -99) > -8: score -= 10
         if (st["pos_52w"] or 0) > 95:    score -= 10
         cands.append({"ticker": s, "subtheme": sub, "score": round(score, 1),
                       "posture": st["posture"], "vs50": st["vs50"], "vs200": st["vs200"],
