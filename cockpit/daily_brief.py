@@ -39,6 +39,18 @@ def _hist_window(tickers, days=None):
             out[t] = [r["price"] for r in rows]
     return out
 
+def _corr_universe(holdings, theme_of):
+    """B19: correlation universe = holdings + every constituent of the subthemes the holdings
+    belong to (not just 4 semis), so each holding's same-theme crowding is measurable. Bounded to
+    the themes actually held, so the FMP history fan-out stays small."""
+    hold = set(holdings)
+    hold_themes = {theme_of.get(h) for h in hold if theme_of.get(h)}
+    peers = set()
+    for name, v in CFG.get("subthemes", {}).items():
+        if name in hold_themes:
+            peers |= set(v.get("names", []))
+    return hold | peers
+
 def _append_nav(date_str, net_liq):
     p = ROOT / "state" / "nav_history.json"
     try:
@@ -159,7 +171,7 @@ def build() -> str:
 
     total_assets = CFG["account"].get("total_assets_usd", 250000)
     hard_cap_usd = total_assets * CFG["risk"]["single_name_hard_cap_pct_of_total"] / 100.0
-    closes = _hist_window(set(holdings) | set(CFG["subthemes"]["semis_gpu_asic"]["names"][:4]))
+    closes = _hist_window(_corr_universe(holdings, theme_of))
     caps = risk.position_caps(closes, net_liq, cur_mv, cash, set(holdings), hard_cap_usd, theme_of)
 
     setups = {t: screener.name_setup(t, quotes[t], CFG["risk"]["no_chase_bias_threshold_pct"], bench_vs200)
