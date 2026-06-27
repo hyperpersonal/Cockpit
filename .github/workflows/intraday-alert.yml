@@ -1,0 +1,35 @@
+name: 盘中警报 Intraday Alert
+on:
+  schedule:
+    - cron: "0,30 13-20 * * 1-5"   # every 30 min, US market hours (UTC); job re-checks phase
+  workflow_dispatch:
+    inputs:
+      force_run: { description: "强制跑(忽略交易日/时段闸门)", type: boolean, default: false }
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - name: Run intraday alert
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVERS: ${{ secrets.EMAIL_RECEIVERS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          IBKR_FLEX_TOKEN: ${{ secrets.IBKR_FLEX_TOKEN }}
+          IBKR_FLEX_QUERY_ID: ${{ secrets.IBKR_FLEX_QUERY_ID }}
+          FORCE_RUN: ${{ inputs.force_run }}
+        run: python -m cockpit.intraday_alert
+      - name: Persist alert dedupe state
+        run: |
+          git config user.name "cockpit-bot"; git config user.email "bot@users.noreply.github.com"
+          git add state/alert_state.json 2>/dev/null || true
+          git commit -m "alert state $(date -u +%FT%TZ)" || { echo "no changes"; exit 0; }
+          git push || (git pull --rebase --autostash && git push) || echo "push skipped"
