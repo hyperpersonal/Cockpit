@@ -40,8 +40,8 @@ data:
   news_max_age_days: 3
 
 schedule:
-  daily_brief_cron_utc: "0 16 * * 1-5"   # 中国周二–周六 00:00 = 美股周一–周五盘中
-  biweekly_review_cron_utc: "0 2 * * 6"  # 中国周六 10:00；脚本内判隔周
+  daily_brief_cron_utc: "23 16 * * 1-5"  # 中国周二–周六 00:23（避整点拥堵） = 美股周一–周五盘中
+  biweekly_review_cron_utc: "23 2 * * 6" # 中国周六 10:23（避整点拥堵）；脚本内判隔周
   biweekly_anchor_date: "2026-06-27"     # 双周锚点（其后每14天）
   skip_us_holidays: true                 # exchange-calendars XNYS
 
@@ -58,4 +58,4 @@ redlines:
 alerts:
   intraday_move_pct: 6.0   # 日内涨跌幅绝对值 >= 此值 触发异动警报（B14）
   news_alerts: true        # 是否对持仓当日突发新闻发盘中警报
-  intraday_cron_utc: "0,30 13-20 * * 1-5"  # 每30分钟·美股时段；脚本内再判 phase（仅 intraday/尾盘竞价）
+  intraday_cron_utc: "13,43 13-20 * * 1-5" # ~每30分钟·美股时段·避整点；脚本内再判 phase（仅 intraday/尾盘竞价）
