@@ -7,7 +7,7 @@ from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, llm, notify, calendars
 from .memory import ReflectionMemory
-from .daily_brief import _theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md
+from .daily_brief import _theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md, _corr_universe
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -72,7 +72,7 @@ def build() -> str:
 
     total_assets = CFG["account"].get("total_assets_usd", 250000)
     hard_cap_usd = total_assets * CFG["risk"]["single_name_hard_cap_pct_of_total"] / 100.0
-    closes = _hist_window(set(holdings) | set(CFG["subthemes"]["semis_gpu_asic"]["names"][:4]))
+    closes = _hist_window(_corr_universe(holdings, theme_of))
     caps = risk.position_caps(closes, net_liq, cur_mv, cash, set(holdings), hard_cap_usd, theme_of)
     setups = {t: screener.name_setup(t, quotes[t], CFG["risk"]["no_chase_bias_threshold_pct"], bench_vs200)
               for t in holdings if t in quotes}
