@@ -1,7 +1,7 @@
 name: 盘中警报 Intraday Alert
 on:
   schedule:
-    - cron: "0,30 13-20 * * 1-5"   # every 30 min, US market hours (UTC); job re-checks phase
+    - cron: "13,43 13-20 * * 1-5"  # ~every 30 min, US market hours (UTC), off-the-hour; job re-checks phase
   workflow_dispatch:
     inputs:
       force_run: { description: "强制跑(忽略交易日/时段闸门)", type: boolean, default: false }
