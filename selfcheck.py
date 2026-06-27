@@ -17,11 +17,13 @@ for p, s in SRC.items():
 
 MUST_USE = ["total_assets_usd", "net_liq_fallback", "single_name_hard_cap_pct_of_total",
             "no_chase_bias_threshold_pct", "hist_window_days", "news_max_age_days",
-            "dilution_atm_disqualifier", "biweekly_anchor_date", "subthemes", "holdings", "exclude"]
+            "dilution_atm_disqualifier", "biweekly_anchor_date", "subthemes", "holdings", "exclude",
+            "intraday_move_pct"]
 # informational / constitution-only keys not expected in code:
 ALLOW_UNUSED = {"daily_brief_cron_utc", "biweekly_review_cron_utc", "skip_us_holidays", "deep_dive",
                 "primary", "positions", "cross_validate", "fail_open", "strategy", "schwab_core",
-                "instrument", "target_usd", "note", "redlines", "role", "vol_window_days", "corr_window_days"}
+                "instrument", "target_usd", "note", "redlines", "role", "vol_window_days", "corr_window_days",
+                "alerts", "intraday_cron_utc", "news_alerts"}
 cfg_raw = open(ROOT / "config.yaml", encoding="utf-8").read()
 cfg = yaml.safe_load(cfg_raw)
 for k in MUST_USE:
@@ -74,6 +76,8 @@ DONE_FINGERPRINTS = {
     "B11": ("cockpit/risk.py", "eff_corr"),
     "B12": ("cockpit/calendars.py", "_session_utc"),
     "B13": ("cockpit/llm.py", "temperature"),
+    "B14": ("cockpit/intraday_alert.py", "build_alerts"),
+    "B17": ("cockpit/crossval.py", "edgar_dossier"),
     "B19": ("cockpit/risk.py", "n_theme_peers"),
     "B20": ("cockpit/daily_brief.py", "ibkr_mv_refonly"),
     "B22": ("cockpit/daily_brief.py", "_candidates_md"),
