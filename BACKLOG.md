@@ -3,7 +3,7 @@
 > ① 跑 `python3 selfcheck.py`（须 PASS）；② 把真实输出（邮件）对照 **live IBKR 连接器** 逐项核对；
 > ③ 确认 config 键全被引用、文档与代码一致。最后更新本表状态。
 
-更新：2026-06-23（P0 B1/B2/B3 已修，selfcheck PASS）
+更新：2026-06-24（B13/B11/B12 已实现，selfcheck PASS；B15/B16 标 won't-do 移除）
 
 ## P0 — 会按时发错 / 数据错误（最高优先）
 | id | 项 | 详情 | 状态 |
@@ -15,26 +15,26 @@
 ## P1 — 正确性 / 功能缺口
 | id | 项 | 状态 |
 |----|----|------|
-| B4 | biweekly **完全没算 TWR/业绩**（仅一句 note）；接 IBKR get_pa_performance 或用 NAV 历史算。 | OPEN |
-| B5 | 反思记忆**平仓自动写入**未接（memory.py docstring 还谎称会自动增长）。 | OPEN | ✅ DONE 2026-06-23 — 平仓离场→自动追加反思教训(daily_brief) |
-| B6 | **新日报（risk/fmp/daily_brief）需对 live IBKR 再核对**后才算定稿。 | OPEN |
-| B7 | **死配置键**：vol_window_days/corr_window_days(且与1年EWMA矛盾)/news_max_age_days/dilution_atm_disqualifier/skip_us_holidays — 删除或接通。 | OPEN | ✅ DONE 2026-06-23 — 删 vol/corr_window_days 死键, 加 hist_window_days, 接通 news_max_age/dilution 旗标 |
-| B8 | **README 过时**（0 提及 EWMA/选股雷达/position_size/9段）——重写。 | OPEN | ✅ DONE 2026-06-23 — README 重写 |
-| B9 | 配置宪法 §3 持仓快照旧股数 + §5 风控描述非EWMA/兜底——标"以 IBKR 为准"并更新。 | OPEN | ✅ DONE 2026-06-23 — 宪法 §3 标'以IBKR为准' §5 写EWMA/兜底 |
+| B4 | ~~biweekly 没算业绩~~ ✅ DONE 2026-06-24 — _performance() 用 NAV 历史算区间收益 vs SPY + alpha（近似净值收益，非入金调整 TWR）。 |
+| B5 | 反思记忆**平仓自动写入**未接（memory.py docstring 还谎称会自动增长）。 | ✅ DONE 2026-06-23 — 平仓离场→自动追加反思教训(daily_brief) |
+| B6 | ~~新日报对 live IBKR 再核对~~ ✅ DONE 2026-06-23 — 见下方「B6 最终核对结果」，去重/止损/热度/风控/稀释/平仓逐项对 live 验证通过。 |
+| B7 | **死配置键**：vol_window_days/corr_window_days(且与1年EWMA矛盾)/news_max_age_days/dilution_atm_disqualifier/skip_us_holidays — 删除或接通。 | ✅ DONE 2026-06-23 — 删 vol/corr_window_days 死键, 加 hist_window_days, 接通 news_max_age/dilution 旗标 |
+| B8 | **README 过时**（0 提及 EWMA/选股雷达/position_size/9段）——重写。 | ✅ DONE 2026-06-23 — README 重写 |
+| B9 | 配置宪法 §3 持仓快照旧股数 + §5 风控描述非EWMA/兜底——标"以 IBKR 为准"并更新。 | ✅ DONE 2026-06-23 — 宪法 §3 标'以IBKR为准' §5 写EWMA/兜底 |
 
 ## P2 — 暂缓 / 小项
 | id | 项 |
 |----|----|
-| B10 | 生命周期阈值偏激进（raw vs200，半导体几乎全标过热）→改"乖离+距高点"。 |
-| B11 | 风控乘数用 avg_corr 非 max_corr（L4 偏好 pairwise）。 |
-| B12 | calendars 盘段 UTC 边界冬令时差 1 小时。 |
-| B13 | llm.py 未设 temperature=0（简报非确定性，影响可复现）。 |
-| B14 | 盘中事件警报（宪法 §7"后续"）从未建。 |
-| B15 | headroom token 压缩未集成（现用粗暴 [:90000] 截断）。 |
-| B16 | 并排对比原版 serenity（验收 §D-5）未跑。 |
-| B17 | SEC EDGAR 深度交叉验证（现仅 Yahoo 价格；其余人工/13F）。 |
+| B10 | ~~生命周期阈值偏激进~~ ✅ DONE 2026-06-23 — 改用乖离(距50日)+距高点双轴；过热=大幅超50日线且贴近高点(抛物线)；实测杀跌日不再误标过热，trending/correcting 有区分。 |
+| B11 | ~~风控乘数用 avg_corr 非 max_corr~~ ✅ DONE 2026-06-24 — eff_corr=max(avg_corr, 0.85×max_corr)，单一高相关 peer 也会收紧上限；输出新增 eff_corr 字段。 |
+| B12 | ~~calendars 盘段 UTC 边界冬令时差 1 小时~~ ✅ DONE 2026-06-24 — 盘段开/收边界改由 exchange_calendars 取当日真实 UTC session（DST+半日自适应）；实测夏 20:00/冬 21:00 UTC 收盘正确。 |
+| B13 | ~~llm.py 未设 temperature~~ ✅ DONE 2026-06-24 — llm.run 增 temperature 参数，默认 0.3（可复现且不过度死板）。 |
+| B14 | ~~盘中事件警报~~ ✅ DONE 2026-06-24 — cockpit/intraday_alert.py：破位/日内±6%异动/当日新闻触发，每30min美股时段(GHA)，仅触发才发邮件，(票·条件·日)去重，代码直出无LLM；新增 intraday-alert.yml + config.alerts。 |
+| B15 | ~~headroom token 压缩~~ ❌ WON'T-DO 2026-06-24（用户决定移除）——[:90000]/[:95000] 截断够用，候选表已代码直出不靠 token 预算。 |
+| B16 | ~~并排对比原版 serenity~~ ❌ WON'T-DO 2026-06-24（用户决定移除）——系统已远超原版样板，无需回头对比。 |
+| B17 | ~~SEC EDGAR 深度交叉验证~~ ✅ DONE 2026-06-24 — crossval.edgar_dossier：真实流通股YoY(拆股不误报)+近180天增发类备案(S-3/424B5/FWP,以流通股为准防发债误报)+最新关键备案；接入daily_brief风控/待验证段。UA走EDGAR_USER_AGENT/EMAIL_SENDER。 |
 | B18 | 邮件 HTML 美化（用户已说稳定后再做）。 |
-| B19 | 风控相关性对等集仅 holdings+4 半导体（peer 窄）。 |
+| B19 | ~~风控相关性对等集仅 holdings+4 半导体~~ ✅ DONE 2026-06-24 — universe 扩成 holdings+所属子板块全部成分股(只取持仓涉及板块,fan-out 可控)；position_caps 双桶: avg_corr 只对账面持仓、max_corr 扩到同板块成分股,单只拥挤板块票也吃集中度折价；输出加 n_book_peers/n_theme_peers。 |
 
 ## 待你拍板
 | D1 | 嘉信 QQQ 建仓节奏（一次性 / 定投 / 等回调）——始终未决。 |
