@@ -30,9 +30,6 @@ def ewma_annual_vol(closes_desc: list, lam: float = 0.98, lookback: int = 252,
     var = float(np.sum(w * r * r))
     return float(np.sqrt(var * 252))
 
-# keep old name as an alias to EWMA (callers use this)
-def annual_vol(closes_desc: list) -> float:
-    return ewma_annual_vol(closes_desc)
 
 def vol_adjusted_limit(av: float) -> float:
     base = 0.20
