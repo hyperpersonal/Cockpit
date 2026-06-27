@@ -3,7 +3,8 @@
 Run before claiming 'done'; optional CI step. Pure stdlib.
 Checks: (1) all modules compile, (2) behavioral config keys are used, (3) biweekly has parity with
 daily (holdings_snapshot + position_caps), (4) surface TODOs, (5) flag UNEXPECTED dead config keys
-(informational/宪法 keys are allowlisted). Exit nonzero on hard failures."""
+(informational/constitution keys are allowlisted), (6) BACKLOG hygiene (no row both OPEN and DONE),
+(7) done-manifest (every DONE claim must have a real code/doc fingerprint). Exit nonzero on hard fail."""
 import ast, glob, re, sys, pathlib, yaml
 ROOT = pathlib.Path(__file__).resolve().parent
 SRC = {p: open(p, encoding="utf-8").read() for p in glob.glob(str(ROOT / "cockpit" / "*.py"))}
@@ -17,7 +18,7 @@ for p, s in SRC.items():
 MUST_USE = ["total_assets_usd", "net_liq_fallback", "single_name_hard_cap_pct_of_total",
             "no_chase_bias_threshold_pct", "hist_window_days", "news_max_age_days",
             "dilution_atm_disqualifier", "biweekly_anchor_date", "subthemes", "holdings", "exclude"]
-# informational / 宪法-only keys not expected in code:
+# informational / constitution-only keys not expected in code:
 ALLOW_UNUSED = {"daily_brief_cron_utc", "biweekly_review_cron_utc", "skip_us_holidays", "deep_dive",
                 "primary", "positions", "cross_validate", "fail_open", "strategy", "schwab_core",
                 "instrument", "target_usd", "note", "redlines", "role", "vol_window_days", "corr_window_days"}
@@ -49,6 +50,42 @@ for p, s in SRC.items():
     for i, line in enumerate(s.splitlines(), 1):
         if re.search(r"\bTODO\b|\bFIXME\b", line):
             warn.append(f"TODO {pathlib.Path(p).name}:{i}: {line.strip()[:80]}")
+
+# (6) BACKLOG hygiene: an item row must not be BOTH open and resolved (the stale-OPEN bug).
+bl = ROOT / "BACKLOG.md"
+backlog_txt = bl.read_text(encoding="utf-8") if bl.exists() else ""
+for i, line in enumerate(backlog_txt.splitlines(), 1):
+    m = re.match(r"^\|\s*(B\d+|D\d+)\b", line)
+    if not m:
+        continue
+    has_open = "OPEN" in line
+    has_done = ("DONE" in line) or ("WON'T-DO" in line) or ("✅" in line) or ("❌" in line)
+    if has_open and has_done:
+        fail.append(f"BACKLOG {m.group(1)} (line {i}): row marked BOTH OPEN and DONE -- ambiguous")
+
+# (7) Done-manifest: anything claimed DONE must have its code/doc fingerprint present, so a 'DONE'
+# label can never be just prose. id -> (path relative to ROOT, substring that must exist).
+DONE_FINGERPRINTS = {
+    "B4":  ("cockpit/biweekly_review.py", "_performance"),
+    "B5":  ("cockpit/daily_brief.py", "_reflect_on_closes"),
+    "B7":  ("config.yaml", "hist_window_days"),
+    "B8":  ("README.md", "EWMA"),
+    "B10": ("cockpit/screener.py", "_lifecycle"),
+    "B11": ("cockpit/risk.py", "eff_corr"),
+    "B12": ("cockpit/calendars.py", "_session_utc"),
+    "B13": ("cockpit/llm.py", "temperature"),
+    "B19": ("cockpit/risk.py", "n_theme_peers"),
+    "B20": ("cockpit/daily_brief.py", "ibkr_mv_refonly"),
+    "B22": ("cockpit/daily_brief.py", "_candidates_md"),
+}
+for bid, (relpath, needle) in DONE_FINGERPRINTS.items():
+    if not re.search(rf"^\|\s*{bid}\b.*(DONE|✅)", backlog_txt, re.M):
+        continue                                   # only enforce ids BACKLOG actually claims DONE
+    fp = ROOT / relpath
+    txt = fp.read_text(encoding="utf-8") if fp.exists() else ""
+    if needle not in txt:
+        fail.append(f"BACKLOG {bid} marked DONE but fingerprint '{needle}' MISSING in {relpath} "
+                    f"(DONE claim not backed by code)")
 
 print("=== Cockpit self-check ===")
 for w in warn: print("  WARN:", w)
