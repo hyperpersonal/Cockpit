@@ -3,7 +3,9 @@ project's dry-run, then hardened (2026-06-23) against the P2 caveats:
  - vol: EWMA (lambda~0.98, ~60-day effective) over up to ~1yr of returns, with per-day returns
    winsorized at +/-12% so a single earnings gap can't blow up the estimate (was: 6-wk equal window).
  - correlation: long (up to ~1yr) window + SAME-SUBTHEME FLOOR (>=0.60) so an earnings-gap can't
-   make two same-theme names look uncorrelated and under-count concentration.
+   make two same-theme names look uncorrelated and under-count concentration. B19: avg_corr is over
+   the held book; max_corr also scans same-subtheme constituents so a lone holding in a crowded
+   theme still gets a concentration haircut. Caller passes a theme-broadened closes universe.
  - position_size(): risk-based per-trade share count (Fixed Fractional, Minervini), complements caps.
 Hard cap is an ABSOLUTE dollar ceiling (e.g. 12% of TOTAL assets = $30k), passed in."""
 from __future__ import annotations
@@ -62,17 +64,26 @@ def position_caps(closes_by_ticker: dict, net_liq: float, current_mv: dict, cash
     out = {}
     for t, r in rets.items():
         av = ewma_annual_vol(closes_by_ticker[t])
-        peers = [o for o in active if o != t and o in rets] or [o for o in rets if o != t]
         def pair_corr(o):
             c = _corr(r, rets[o])
             if theme_of.get(t) and theme_of.get(t) == theme_of.get(o):
-                c = max(c, SAME_THEME_CORR_FLOOR)     # don't let an earnings gap mask concentration
+                c = max(c, SAME_THEME_CORR_FLOOR)     # don't let an earnings gap mask same-theme concentration
             return c
-        corrs = [pair_corr(o) for o in peers] if peers else []
-        avg_corr = float(np.mean(corrs)) if corrs else 0.0
-        max_corr = max(corrs) if corrs else 0.0
-        # B11: blend avg with the single most-correlated peer so one tightly-coupled pair
-        # (e.g. two names that really move together) tightens the cap even if the average is mild.
+        # B19: two peer buckets. avg_corr is over the actual BOOK (other holdings) so it reflects
+        # real portfolio concentration and isn't inflated by many same-theme names. max_corr also
+        # scans same-SUBTHEME constituents (held or not), so a lone holding in a crowded theme still
+        # gets its cap tightened for theme crowding (the narrow peer set that B19 was about).
+        book_peers = [o for o in active if o != t and o in rets]
+        theme_peers = [o for o in rets if o != t and theme_of.get(o)
+                       and theme_of.get(o) == theme_of.get(t)]
+        scan_peers = list(dict.fromkeys(book_peers + theme_peers)) or [o for o in rets if o != t]
+        book_corrs = [pair_corr(o) for o in book_peers]
+        scan_corrs = [pair_corr(o) for o in scan_peers]
+        avg_corr = float(np.mean(book_corrs)) if book_corrs else (
+                   float(np.mean(scan_corrs)) if scan_corrs else 0.0)
+        max_corr = max(scan_corrs) if scan_corrs else 0.0
+        # B11: blend avg with the single most-correlated peer so one tightly-coupled name
+        # tightens the cap even if the average is mild.
         eff_corr = max(avg_corr, 0.85 * max_corr)
         comb = vol_adjusted_limit(av) * corr_multiplier(eff_corr)
         cap = min(net_liq * comb, hard_cap_usd)
@@ -80,8 +91,9 @@ def position_caps(closes_by_ticker: dict, net_liq: float, current_mv: dict, cash
         room = cap - mv
         out[t] = dict(annual_vol=av, annual_vol_simple_1y=annual_vol_simple(closes_by_ticker[t]),
                       vol_limit_pct=vol_adjusted_limit(av) * 100,
-                      avg_corr=avg_corr, max_corr=max_corr, eff_corr=round(eff_corr, 3),
-                      corr_mult=corr_multiplier(eff_corr),
+                      avg_corr=round(avg_corr, 3), max_corr=round(max_corr, 3),
+                      eff_corr=round(eff_corr, 3), n_book_peers=len(book_peers),
+                      n_theme_peers=len(theme_peers), corr_mult=corr_multiplier(eff_corr),
                       combined_pct=comb * 100, cap_usd=cap, current_usd=mv,
                       now_pct=mv / net_liq * 100 if net_liq else 0,
                       action=("ADD up to ${:,.0f}".format(min(room, cash if cash else room)) if room > 0
