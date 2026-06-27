@@ -14,13 +14,14 @@ SYSTEM = (
  "⑤ 不追高（乖离率>5%且非强趋势则提示）。严格基于提供的数据作答，不要用训练知识臆测当前行情。"
 )
 
-def run(prompt: str, model: str, max_tokens: int = 3000) -> str:
+def run(prompt: str, model: str, max_tokens: int = 3000, temperature: float = 0.3) -> str:
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
         return "[LLM 跳过：未配置 ANTHROPIC_API_KEY]"
     try:
         client = Anthropic(api_key=key)
-        msg = client.messages.create(model=model, max_tokens=max_tokens, system=SYSTEM,
+        msg = client.messages.create(model=model, max_tokens=max_tokens, temperature=temperature,
+                                      system=SYSTEM,
                                       messages=[{"role": "user", "content": prompt}])
         return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
     except Exception as e:                       # fail-open: deliver data even if LLM fails
