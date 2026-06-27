@@ -185,6 +185,7 @@ def build() -> str:
     broken = [t for t, d in holdings_snapshot.items() if d["already_broken_down"]]
 
     xval = {t: crossval.verify_price(t, quotes[t]["price"]) for t in holdings if t in quotes}
+    edgar = {t: crossval.edgar_dossier(t) for t in holdings}    # B17: SEC EDGAR deep check
     maxage = CFG.get("data", {}).get("news_max_age_days", 3)
     cutoff = (dt.date.today() - dt.timedelta(days=maxage)).isoformat()
     def _recent(n):
@@ -212,7 +213,7 @@ def build() -> str:
                   single_name_hard_cap_usd=hard_cap_usd, portfolio_heat_pct=portfolio_heat_pct,
                   broken_down_holdings=broken, closed_positions=closed, benchmark=bench,
                   bench_vs200=bench_vs200, holdings_snapshot=holdings_snapshot, risk_caps=caps,
-                  cross_validation=xval, earnings_calendar=earn, news=news, macro=macro,
+                  cross_validation=xval, edgar=edgar, earnings_calendar=earn, news=news, macro=macro,
                   subthemes=subs, lessons=lessons)
     if phase == "non_trading":
         return "[%s] US market closed; no brief today." % today
@@ -227,11 +228,15 @@ def build() -> str:
               "(5) 技术位/支撑阻力: per holding vs50/vs200/off_high/rs_vs_spy/posture + stop_review_level "
               "(real stop BELOW price) + dist_to_stop_pct; if already_broken_down=true say 已跌破技术位/"
               "成本止损，按纪律评估减仓.\n"
-              "(6) 风控触发 from risk_caps (market_value vs cap_usd vs single_name_hard_cap_usd). "
-              "portfolio_heat_pct = open risk to stops / net liq, keep <6-8%. Note dilution_flag/"
-              "dilution_yoy_pct + broken_down_holdings.\n"
+              "(6) 风控触发 from risk_caps (market_value vs cap_usd vs single_name_hard_cap_usd; "
+              "now also eff_corr/max_corr/n_theme_peers -- 同板块拥挤会收紧上限). "
+              "portfolio_heat_pct = open risk to stops / net liq, keep <6-8%. 稀释以 edgar[ticker] 为准: "
+              "shares_outstanding.yoy_pct(真实流通股变化)+ likely_split(拆股勿当稀释)+ dilution_flag; "
+              "FMP 的 dilution_yoy_pct 仅作旁证。若 edgar.dilution_flag 为真,按 Serenity #7 提示稀释风险。"
+              "也提示 broken_down_holdings.\n"
               "(7) 今日操作提示 -- per flagged holding a 满足/注意/不满足 checklist.\n"
-              "(8) 待验证 -- mark any number NOT in cross_validation as 待验证.\n"
+              "(8) 待验证 -- mark any number NOT in cross_validation as 待验证. 列 edgar[ticker] 的 "
+              "dilution_filings/recent_filings(form+date)供人工查 SEC;edgar.available=false 标 EDGAR 不可用.\n"
               "Obey phase_rule. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
               "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:95000])
     body = llm.run(prompt, model=CFG["models"]["daily"], max_tokens=4200)
