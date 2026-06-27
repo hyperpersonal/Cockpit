@@ -1,7 +1,7 @@
 name: 双周复盘 Biweekly Review
 on:
   schedule:
-    - cron: "0 2 * * 6"
+    - cron: "23 2 * * 6"    # UTC 周六 02:23 = 中国周六 10:23（避开整点拥堵）。脚本内按双周锚点判断是否本周执行。
   workflow_dispatch:
     inputs:
       force_run: { description: "强制本周执行", type: boolean, default: false }
