@@ -6,11 +6,21 @@ account:
 
 strategy: momentum_mainline + serenity_chokepoint   # 跟热点、不强行分散
 
-holdings:                          # 主动仓真实标的（IBKR 票=吉祥物，已排除）
+holdings:                          # 主动仓真实标的（2026-07-11 对 live IBKR 同步；IBKR 票=吉祥物，已排除）
   - { ticker: NVDA, role: "半导体/主线龙头" }
-  - { ticker: ORCL, role: "软件云/落后主线-减仓候选" }
+  - { ticker: MU,   role: "内存HBM/最大仓之一（已超$30k硬顶，待处理）" }
+  - { ticker: SKHY, role: "疑似SK海力士ADR（身份待验证）/最大仓（已超$30k硬顶，待处理）" }
+  - { ticker: ORCL, role: "软件云/破位-减仓信号中" }
   - { ticker: MSFT, role: "软件云/落后" }
-  - { ticker: META, role: "广告通信/落后" }
+  - { ticker: MRVL, role: "半导体/定制ASIC" }
+  - { ticker: AVGO, role: "半导体/ASIC龙头" }
+  - { ticker: KLAC, role: "半导体设备（不在子板块地图）" }
+  - { ticker: ASX,  role: "封测ADR（待验证）" }
+  - { ticker: AAOI, role: "光模块" }
+  - { ticker: GLW,  role: "光通信玻璃（待验证）" }
+  - { ticker: SOXX, role: "半导体ETF持仓" }
+  - { ticker: CCXI, role: "身份待验证" }
+  - { ticker: SPCX, role: "疑似ETF（身份待验证）" }
 exclude: [IBKR]                    # 吉祥物，不计入分析
 
 # AI 供应链子板块地图（取自 Serenity theses.md）——选股自下而上的池
@@ -20,7 +30,7 @@ subthemes:
   compound_semi:    { etfs: [],          names: [AXTI, TSEM] }
   memory_hbm:       { etfs: [],          names: [MU, SNDK, SIMO] }
   neocloud:         { etfs: [],          names: [NBIS, CRWV, CIFR, WULF] }
-  power_grid:       { etfs: [XLU],       names: [VST, CEG] }
+  power_grid:       { etfs: [XLU],       names: [VST, CEG, FLNC] }
   ai_software:      { etfs: [IGV],       names: [MSFT, ORCL, PLTR] }
   big_tech:         { etfs: [XLK, QQQ],  names: [] }
 benchmark: SPY
