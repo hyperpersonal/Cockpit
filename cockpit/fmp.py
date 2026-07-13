@@ -18,7 +18,18 @@ def _get(path: str, **params):
         return None
 
 def batch_quote(symbols: list) -> list:
-    return _get("batch-quote", symbols=",".join(symbols)) or []
+    """batch-quote needs Premium+ (verified 2026-07-11 vs FMP compare matrix). On failure/empty
+    (e.g. Starter plan, or batch outage) fall back to per-symbol stable/quote -- same row shape
+    (verified live: price/priceAvg50/priceAvg200/changePercentage). Plan-agnostic (B31)."""
+    rows = _get("batch-quote", symbols=",".join(symbols))
+    if rows:
+        return rows
+    out = []
+    for s in symbols:
+        r = _get("quote", symbol=s)
+        if isinstance(r, list) and r:
+            out.append(r[0])
+    return out
 
 def hist_light(symbol: str, frm: str) -> list:
     return _get("historical-price-eod/light", symbol=symbol, **{"from": frm}) or []
