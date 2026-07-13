@@ -20,9 +20,17 @@ def run(prompt: str, model: str, max_tokens: int = 3000, temperature: float = 0.
         return "[LLM 跳过：未配置 ANTHROPIC_API_KEY]"
     try:
         client = Anthropic(api_key=key)
-        msg = client.messages.create(model=model, max_tokens=max_tokens, temperature=temperature,
-                                      system=SYSTEM,
-                                      messages=[{"role": "user", "content": prompt}])
+        kwargs = dict(model=model, max_tokens=max_tokens, system=SYSTEM,
+                      messages=[{"role": "user", "content": prompt}])
+        try:
+            msg = client.messages.create(temperature=temperature, **kwargs)
+        except Exception as e:
+            # B23: newer models (e.g. opus-4-8) reject temperature with a 400
+            # ("`temperature` is deprecated for this model") -> retry once WITHOUT it.
+            if "temperature" not in str(e).lower():
+                raise
+            log.warning("model rejected temperature, retrying without: %s", e)
+            msg = client.messages.create(**kwargs)
         return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
     except Exception as e:                       # fail-open: deliver data even if LLM fails
         log.error("LLM failed: %s", e)
