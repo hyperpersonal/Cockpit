@@ -157,13 +157,16 @@ def build() -> str:
 
     mem = ReflectionMemory(str(ROOT / "state" / "reflection_memory.json"))
     port = ibkr.get_portfolio()
-    closed = []; as_of = None
+    closed = []; as_of = None; drift_extra = []; drift_gone = []
     if port:
         net_liq = port["net_liq"]; cash = port["cash"]; positions = port["positions"]; as_of = port.get("as_of")
         cur_mv = {t: p["mv"] for t, p in positions.items() if t not in exclude}
         port_note = ""
         _append_nav(today, net_liq)
         closed = _reflect_on_closes(positions, exclude, mem, today)
+        ibkr_names = {t for t in positions if t not in exclude}
+        drift_extra = sorted(ibkr_names - set(holdings))   # B25: held live but NOT in config
+        drift_gone = sorted(set(holdings) - ibkr_names)    # in config but no longer held
     else:
         net_liq = CFG["account"]["net_liq_fallback"]; cash = 0.0
         positions = {}; cur_mv = {}
@@ -242,7 +245,13 @@ def build() -> str:
     body = llm.run(prompt, model=CFG["models"]["daily"], max_tokens=4200)
     header = ("> ⏱️ 持仓数据截至 %s（IBKR Flex 上一交易日；**当日交易可能未反映**——如需当日，Flex 周期改 Today）。\n\n"
               % as_of) if as_of else ""
-    return header + body + "\n" + _candidates_md(candidates, subs)   # 选股雷达 code-rendered, guaranteed
+    drift = ""
+    if drift_extra or drift_gone:
+        drift = ("> 🔴 **持仓漂移警报（B25）**：config 与 IBKR 实际持仓不一致——"
+                 + ("已持有但未登记（本报的风控/止损/警报对其失明）: **" + ", ".join(drift_extra) + "**；" if drift_extra else "")
+                 + ("已登记但不再持有: " + ", ".join(drift_gone) + "。" if drift_gone else "")
+                 + "请立即更新 config.holdings。\n\n")
+    return header + drift + body + "\n" + _candidates_md(candidates, subs)   # 选股雷达 code-rendered, guaranteed
 
 def main():
     if not calendars.is_us_trading_day() and os.getenv("FORCE_RUN", "false").lower() != "true":
