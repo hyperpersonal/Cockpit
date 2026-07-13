@@ -1,7 +1,5 @@
 {
-  "_doc": "System reflection memory (TradingAgents memory.py style). situation->lesson, retrieved by BM25 similarity at each review/decision and injected so the system learns. Write hook (add/save) ready; v1 = seeded + manual append until closed-trade postmortems exist.",
   "version": 1,
-  "updated": "2026-06-21",
   "lessons": [
     {
       "id": "L1",
@@ -73,6 +71,17 @@
         "forward-TAM",
         "cross-validation",
         "serenity"
+      ]
+    },
+    {
+      "id": "L7",
+      "situation": "Closed/exited position META (last unrealized -7.3%).",
+      "lesson": "Position META left the book at ~-7.3%. Review: did the exit follow the thesis and stop discipline? Record realized outcome and what to repeat/avoid.",
+      "source": "auto: position-close detector",
+      "tags": [
+        "postmortem",
+        "exit",
+        "META"
       ]
     }
   ]
