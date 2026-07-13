@@ -67,5 +67,5 @@ redlines:
 
 alerts:
   intraday_move_pct: 6.0   # 日内涨跌幅绝对值 >= 此值 触发异动警报（B14）
-  news_alerts: true        # 是否对持仓当日突发新闻发盘中警报
+  news_alerts: false       # 新闻警报已关(2026-07-11 用户反馈全是噪音)——破位/±6%异动警报保留；重开改 true
   intraday_cron_utc: "13,43 13-20 * * 1-5" # ~每30分钟·美股时段·避整点；脚本内再判 phase（仅 intraday/尾盘竞价）
