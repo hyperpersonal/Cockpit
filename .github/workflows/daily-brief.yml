@@ -8,6 +8,8 @@ on:
 jobs:
   brief:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,8 +28,8 @@ jobs:
           IBKR_FLEX_QUERY_ID: ${{ secrets.IBKR_FLEX_QUERY_ID }}
           FORCE_RUN: ${{ inputs.force_run }}
         run: python -m cockpit.daily_brief
-      - name: Persist updated memory   # commit any new reflection lessons
+      - name: Persist state (nav/last-positions/memory)   # B27: rebase-retry like intraday, so pushes never silently die
         run: |
           git config user.name "cockpit-bot"; git config user.email "bot@users.noreply.github.com"
-          git add state/ && git commit -m "memory update $(date -u +%F)" || echo "no changes"
-          git push || echo "push skipped"
+          git add state/ && git commit -m "state update $(date -u +%F)" || { echo "no changes"; exit 0; }
+          git push || (git pull --rebase --autostash && git push) || echo "push skipped"
