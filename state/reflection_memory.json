@@ -83,6 +83,17 @@
         "exit",
         "META"
       ]
+    },
+    {
+      "id": "L8",
+      "situation": "Closed/exited position SKHYV (last unrealized -1.2%).",
+      "lesson": "Position SKHYV left the book at ~-1.2%. Review: did the exit follow the thesis and stop discipline? Record realized outcome and what to repeat/avoid.",
+      "source": "auto: position-close detector",
+      "tags": [
+        "postmortem",
+        "exit",
+        "SKHYV"
+      ]
     }
   ]
 }
