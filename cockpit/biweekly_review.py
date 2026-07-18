@@ -51,24 +51,26 @@ def _performance(net_liq_now, bench, today) -> dict:
 
 def build() -> str:
     today = dt.date.today().isoformat()
-    holdings = [h["ticker"] for h in CFG["holdings"]]
+    cfg_holdings = [h["ticker"] for h in CFG.get("holdings", [])]
     exclude = set(CFG.get("exclude", []))
     theme_of = _theme_of()
     bench = CFG.get("benchmark", "SPY")
-    quotes = screener.quote_map(_universe())
-    bench_vs200 = 0.0
-    if bench in quotes and quotes[bench].get("priceAvg200"):
-        bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
 
     port = ibkr.get_portfolio()
     if port:
         net_liq = port["net_liq"]; cash = port["cash"]; positions = port["positions"]
+        holdings = sorted({t for t in positions if t not in exclude})   # B33: IBKR-driven active book
         cur_mv = {t: p["mv"] for t, p in positions.items() if t not in exclude}
         port_note = ""
     else:
         net_liq = CFG["account"]["net_liq_fallback"]; cash = 0.0
         positions = {}; cur_mv = {}
+        holdings = cfg_holdings                                          # fail-open fallback
         port_note = "IBKR offline: positions/P&L unknown (data gap)."
+    quotes = screener.quote_map(sorted(set(_universe()) | set(holdings)))
+    bench_vs200 = 0.0
+    if bench in quotes and quotes[bench].get("priceAvg200"):
+        bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
 
     total_assets = CFG["account"].get("total_assets_usd", 250000)
     hard_cap_usd = total_assets * CFG["risk"]["single_name_hard_cap_pct_of_total"] / 100.0
