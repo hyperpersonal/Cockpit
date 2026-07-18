@@ -143,34 +143,80 @@ def _candidates_md(candidates, subs):
     L.append("> Serenity 14 点/VCP 需人工对基本面+盘面确认；示例股数 = 1%风险、止损设入场−8%、与 $30k 硬顶取 min。")
     return "\n".join(L)
 
+def _action_plan(snapshot, caps, heat_pct, candidates, cash, hard_cap_usd):
+    """B32: deterministic TODAY-action list, code-rendered at the TOP of the email.
+    Order: risk-off first (over-cap TRIM / broken-down), then a heat gate (>=6% -> no new buys),
+    then at most 2 buyable-on-support candidates with 1%-risk sizing. Explicit "do nothing"
+    when no rule fires. Prompts only -- the user executes manually (red line)."""
+    L = ["## ✅ 今日行动清单（规则直出 · 提示非指令 · 手动执行）", ""]
+    sells = []
+    for tkr, d in sorted(snapshot.items()):
+        c = caps.get(tkr, {})
+        act = str(c.get("action", ""))
+        if act.startswith("TRIM"):
+            over_hard = (c.get("current_usd") or 0) > hard_cap_usd
+            why = "超风控上限" + ("+超$%dk硬顶" % int(hard_cap_usd / 1000) if over_hard else "")
+            sells.append("- 🔴 **%s：减仓 %s**（%s；规则=vol×corr 动态上限）" % (tkr, act.replace("TRIM ", ""), why))
+        if d.get("already_broken_down"):
+            sells.append("- 🔴 **%s：已破位（无有效止损位）→ 按纪律评估减仓/清仓**（规则=破位纪律/L1）" % tkr)
+    if sells:
+        L += ["**先卖/减（风险优先）：**"] + sells + [""]
+    if heat_pct is not None and heat_pct >= 6.0:
+        L.append("**买入：今天不开新仓** —— 组合热度 %.1f%% 已达预算(6-8%%)上限；先执行减仓释放风险预算（规则=热度闸门）。" % heat_pct)
+    else:
+        buys = []
+        for c in (candidates or []):
+            if c.get("posture") != "buyable-on-support":
+                continue
+            sz = c.get("size_1pct_stop8") or {}
+            if not sz.get("shares"):
+                continue
+            buys.append("- 🟢 **%s**（%s·评分%s）：示例 %s 股 ≈ $%s，止损=入场−8%%（规则=支撑区+1%%风险；买前人工核 Serenity14/VCP/稀释）"
+                        % (c.get("ticker"), c.get("subtheme"), c.get("score"), sz.get("shares"), sz.get("position_value")))
+            if len(buys) >= 2:
+                break
+        if buys:
+            L += ["**可考虑买（形态在支撑区，至多两名）：**"] + buys
+            if (cash or 0) < 2000:
+                L.append("- ⚠️ 现金仅 $%.0f：任何买入以先完成上面的卖出为前提。" % (cash or 0))
+        elif not sells:
+            L.append("**今天不动**：无超限、无破位、无支撑区候选（规则=不追 extended）。")
+        else:
+            L.append("**买入：暂无支撑区候选**（规则=不追 extended）。")
+    L += ["", "---", ""]
+    return "\n".join(L)
+
 def build() -> str:
     today = dt.date.today().isoformat()
     phase = calendars.market_phase()
-    holdings = [h["ticker"] for h in CFG["holdings"]]
     exclude = set(CFG.get("exclude", []))
+    cfg_holdings = [h["ticker"] for h in CFG.get("holdings", [])]
     theme_of = _theme_of()
-    quotes = screener.quote_map(_universe())
     bench = CFG.get("benchmark", "SPY")
-    bench_vs200 = 0.0
-    if bench in quotes and quotes[bench].get("priceAvg200"):
-        bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
 
     mem = ReflectionMemory(str(ROOT / "state" / "reflection_memory.json"))
     port = ibkr.get_portfolio()
     closed = []; as_of = None; drift_extra = []; drift_gone = []
     if port:
         net_liq = port["net_liq"]; cash = port["cash"]; positions = port["positions"]; as_of = port.get("as_of")
+        # B33: the ACTIVE BOOK is IBKR-DRIVEN -- every live Flex position (minus exclude) is
+        # tracked; config.holdings is role annotation + offline fallback only.
+        holdings = sorted({t for t in positions if t not in exclude})
         cur_mv = {t: p["mv"] for t, p in positions.items() if t not in exclude}
         port_note = ""
         _append_nav(today, net_liq)
         closed = _reflect_on_closes(positions, exclude, mem, today)
-        ibkr_names = {t for t in positions if t not in exclude}
-        drift_extra = sorted(ibkr_names - set(holdings))   # B25: held live but NOT in config
-        drift_gone = sorted(set(holdings) - ibkr_names)    # in config but no longer held
+        drift_extra = sorted(set(holdings) - set(cfg_holdings))   # held, not yet annotated in config
+        drift_gone = sorted(set(cfg_holdings) - set(holdings))    # stale config entries (can delete)
     else:
         net_liq = CFG["account"]["net_liq_fallback"]; cash = 0.0
         positions = {}; cur_mv = {}
+        holdings = cfg_holdings                                   # fail-open: IBKR down -> config list
         port_note = "IBKR offline: shares/cost/P&L unknown (data gap); caps shown as room-from-flat."
+    quotes = screener.quote_map(sorted(set(_universe()) | set(holdings)))
+    bench_vs200 = 0.0
+    if bench in quotes and quotes[bench].get("priceAvg200"):
+        bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
 
     total_assets = CFG["account"].get("total_assets_usd", 250000)
     hard_cap_usd = total_assets * CFG["risk"]["single_name_hard_cap_pct_of_total"] / 100.0
@@ -206,6 +252,7 @@ def build() -> str:
     for c in candidates:
         q = quotes.get(c["ticker"], {}); px = q.get("price")
         c["size_1pct_stop8"] = risk.position_size(net_liq, px, px * 0.92, 1.0, maxpos_pct) if px else None
+    action_md = _action_plan(holdings_snapshot, caps, portfolio_heat_pct, candidates, cash, hard_cap_usd)
 
     weak = [t for t, s in setups.items() if not s["stage2"]]
     situation = "Holdings " + ",".join(holdings) + "; weak/below-MA: %s; phase %s" % (weak, phase)
@@ -247,11 +294,11 @@ def build() -> str:
               % as_of) if as_of else ""
     drift = ""
     if drift_extra or drift_gone:
-        drift = ("> 🔴 **持仓漂移警报（B25）**：config 与 IBKR 实际持仓不一致——"
-                 + ("已持有但未登记（本报的风控/止损/警报对其失明）: **" + ", ".join(drift_extra) + "**；" if drift_extra else "")
-                 + ("已登记但不再持有: " + ", ".join(drift_gone) + "。" if drift_gone else "")
-                 + "请立即更新 config.holdings。\n\n")
-    return header + drift + body + "\n" + _candidates_md(candidates, subs)   # 选股雷达 code-rendered, guaranteed
+        drift = ("> 🟡 **config 注释提醒（B33）**：持仓名单已由 IBKR 实时驱动，跟踪不受影响——"
+                 + ("新持仓待补注释/子板块归属: **" + ", ".join(drift_extra) + "**；" if drift_extra else "")
+                 + ("config 中已不再持有(可删): " + ", ".join(drift_gone) + "。" if drift_gone else "")
+                 + "\n\n")
+    return header + drift + action_md + body + "\n" + _candidates_md(candidates, subs)   # 行动清单+选股雷达 code-rendered
 
 def main():
     if not calendars.is_us_trading_day() and os.getenv("FORCE_RUN", "false").lower() != "true":
