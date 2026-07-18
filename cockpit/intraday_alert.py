@@ -39,12 +39,14 @@ def build_alerts():
     """Return (today, [(ticker, cond_key, text), ...]) for everything currently triggered."""
     today = dt.date.today().isoformat()
     exclude = set(CFG.get("exclude", []))
-    holdings = [h["ticker"] for h in CFG.get("holdings", []) if h["ticker"] not in exclude]
+    cfg_holdings = [h["ticker"] for h in CFG.get("holdings", []) if h["ticker"] not in exclude]
+    port = ibkr.get_portfolio() or {"positions": {}}
+    pos = port.get("positions", {})
+    # B33: IBKR-driven active book (config fallback when Flex empty/offline)
+    holdings = sorted({t for t in pos if t not in exclude}) or cfg_holdings
     move_thr = CFG.get("alerts", {}).get("intraday_move_pct", 6.0)
     news_on = CFG.get("alerts", {}).get("news_alerts", True)
     quotes = screener.quote_map(holdings)
-    port = ibkr.get_portfolio() or {"positions": {}}
-    pos = port.get("positions", {})
     trig = []
     for t in holdings:
         q = quotes.get(t, {})
