@@ -2,7 +2,7 @@
 real IBKR holdings_snapshot (shares/cost/MV/P&L), upgraded EWMA vol x correlation risk caps,
 sub-theme rotation, 选股雷达 candidates, reflection memory, and REAL performance-vs-benchmark
 from self-tracked NAV history (state/nav_history.json, appended daily by daily_brief).
-ASCII-only source; LLM writes the review in Chinese (7-section 宪法 format)."""
+LLM writes the review in Chinese (7-section 宪法 format); scoreboard/radar are code-rendered."""
 from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, llm, notify, calendars
@@ -48,6 +48,63 @@ def _performance(net_liq_now, bench, today) -> dict:
             "benchmark_return_pct": spy_ret,
             "alpha_pct": round(port_ret - spy_ret, 2) if spy_ret is not None else None,
             "note": "approx period net-liq return (not deposit-adjusted); SPY price return same window"}
+
+def _adherence_md() -> str:
+    """B29 adherence scoreboard, code-rendered (never touches the LLM). Reads
+    state/signal_history.json (written daily by daily_brief). An episode = the first day a
+    ticker shows a signal until it clears/position leaves. acted = shares later cut >=5%.
+    Cost-of-ignoring: trim episodes use the suggested trim amount at signal price; broken
+    episodes use the full position. Positive = ignoring cost money; negative = ignoring
+    happened to pay off -- shown honestly either way."""
+    p = ROOT / "state" / "signal_history.json"
+    try:
+        days = json.load(open(p, encoding="utf-8")).get("days", [])
+    except Exception:
+        days = []
+    head = "\n\n---\n## 🧾 依从性记分板（B29 · 代码直出）\n"
+    if len(days) < 2:
+        return head + "数据积累中（signal_history 需≥2 个交易日）。\n"
+    latest = days[-1].get("holdings", {})
+    episodes, active = [], {}
+    for day in days:
+        h = day.get("holdings", {})
+        for t_, e in h.items():
+            if e.get("signal") and t_ not in active:
+                active[t_] = {"t": t_, "date": day["date"], "signal": e["signal"],
+                              "shares0": e.get("shares"), "price0": e.get("price"),
+                              "trim_usd": e.get("trim_usd")}
+            elif not e.get("signal") and t_ in active:
+                episodes.append(active.pop(t_))
+        for t_ in list(active):
+            if t_ not in h:
+                episodes.append(active.pop(t_))
+    episodes += list(active.values())
+    rows, tot_cost, n_act = [], 0.0, 0
+    for ep in episodes:
+        sh0, p0 = ep.get("shares0"), ep.get("price0")
+        if not (sh0 and p0):
+            continue
+        cur = latest.get(ep["t"]) or {}
+        cur_sh = cur.get("shares") or 0.0
+        cur_p = cur.get("price") or p0
+        acted = cur_sh < sh0 * 0.95
+        chg = (cur_p / p0 - 1) * 100
+        if acted:
+            n_act += 1; cost_s = "—"
+        else:
+            n_tr = (ep["trim_usd"] / p0) if ep.get("trim_usd") else sh0
+            cost = n_tr * (p0 - cur_p)
+            tot_cost += cost; cost_s = "$%+.0f" % cost
+        rows.append("| %s | %s | %s | %s | %+.1f%% | %s |" % (
+            ep["date"], ep["t"], ep["signal"], "✅ 执行" if acted else "❌ 无视", chg, cost_s))
+    if not rows:
+        return head + "本期无信号事件。\n"
+    out = [head.rstrip("\n"),
+           "> 「无视的代价」= 若在信号日按建议执行（trim 按建议金额 / broken 按全仓）对比最新价的差额；正数=无视多亏了这么多，负数=无视反而占了便宜（如实展示）。数据自 %s 起积累。" % days[0]["date"],
+           "", "| 信号日 | 票 | 信号 | 执行? | 信号日至今价格 | 无视的代价 |", "|---|---|---|---|---|---|"]
+    out += rows
+    out += ["", "**合计：执行 %d 条 / 无视 %d 条；无视信号的净代价 ≈ $%+.0f**" % (n_act, len(rows) - n_act, tot_cost), ""]
+    return "\n".join(out)
 
 def build() -> str:
     today = dt.date.today().isoformat()
@@ -111,7 +168,7 @@ def build() -> str:
               "(7) 待验证. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
               "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:95000])
     body = llm.run(prompt, model=CFG["models"]["biweekly"], max_tokens=4600)
-    return body + _candidates_md(candidates, subs)   # 选股雷达 code-rendered, guaranteed
+    return body + _adherence_md() + _candidates_md(candidates, subs)   # 记分板+雷达 code-rendered
 
 def main():
     if not _is_review_week() and os.getenv("FORCE_RUN", "false").lower() != "true":
