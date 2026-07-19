@@ -82,9 +82,37 @@ def rank_candidates(subthemes: dict, quotes: dict, bench_vs200: float,
         if st["chasing"]:        score -= 30
         if (st["off_high"] or -99) > -8: score -= 10
         if (st["pos_52w"] or 0) > 95:    score -= 10
+        q = quotes[s]; _hi = q.get("yearHigh"); _a50 = q.get("priceAvg50")
         cands.append({"ticker": s, "subtheme": sub, "score": round(score, 1),
                       "posture": st["posture"], "vs50": st["vs50"], "vs200": st["vs200"],
                       "off_high": st["off_high"], "rs_vs_spy": st["rs_vs_spy"],
+                      "wait_20pct": round(_hi * 0.80, 2) if _hi else None,      # B38: leader-pullback entries
+                      "wait_25pct": round(_hi * 0.75, 2) if _hi else None,
+                      "wait_ma50": round(_a50, 2) if _a50 else None,
                       "serenity_14": "LLM/manual (needs fundamentals+filings)",
                       "vcp_state": "LLM/manual (needs intraday base structure)"})
     return sorted(cands, key=lambda c: c["score"], reverse=True)[:top]
+
+
+def market_position(quotes: dict):
+    """B39 v1: transparent 0-100 market-position score (higher = hotter / chase-risk) from
+    (a) QQQ distance to 52w high mapped [-25%..0] -> [0..100], (b) QQQ vs 200DMA mapped
+    [-20..+20] -> [0..100], (c) VIX mapped [40..12] -> [0..100]; equal-weight mean of the
+    components available. Valuation (CAPE) percentile NOT included yet (external data, see
+    BACKLOG B39). Fail-open: None without QQQ quote; VIX optional. No leverage anywhere."""
+    q = quotes.get("QQQ", {}); v = quotes.get("^VIX", {})
+    p, hi, a200 = q.get("price"), q.get("yearHigh"), q.get("priceAvg200")
+    if not (p and hi and a200):
+        return None
+    off_high = (p / hi - 1) * 100
+    vs200 = (p / a200 - 1) * 100
+    vix = v.get("price")
+    comp = [max(0.0, min(100.0, 100 + off_high * 4)),
+            max(0.0, min(100.0, 50 + vs200 * 2.5))]
+    if vix:
+        comp.append(max(0.0, min(100.0, 100 - (vix - 12) * 100.0 / 28)))
+    score = round(sum(comp) / len(comp))
+    zone = "high" if score >= 70 else ("neutral" if score >= 40 else "deep_pullback")
+    return {"score": score, "zone": zone, "off_high_pct": round(off_high, 1),
+            "vs200_pct": round(vs200, 1), "vix": vix,
+            "rule": "mean(offhigh[-25..0]->[0..100], vs200[-20..+20]->[0..100], VIX[40..12]->[0..100])"}
