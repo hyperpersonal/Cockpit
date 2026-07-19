@@ -210,6 +210,80 @@ def _append_signal_log(today, net_liq, heat_pct, snapshot, caps):
     except Exception:
         pass
 
+def _lamps_md(heat_pct, cash, earn):
+    """B42 status lamps: heat / cash-margin / earnings window. One glance, code-rendered."""
+    heat_flag = "🔴" if (heat_pct or 0) >= 6 else "🟢"
+    cash_flag = "🔴 保证金使用中，利息计息" if (cash or 0) < -100 else "🟢 现金"
+    L = ["%s 组合热度 %s%%（预算 <6-8%%）｜ %s $%s" % (
+        heat_flag, heat_pct if heat_pct is not None else "?", cash_flag, format(round(cash or 0), ","))]
+    soon = []
+    today_d = dt.date.today()
+    for tk, e in (earn or {}).items():
+        d = str(e.get("date", ""))[:10]
+        try:
+            dd = (dt.date.fromisoformat(d) - today_d).days
+            if 0 <= dd <= 14:
+                soon.append((dd, tk, d))
+        except Exception:
+            pass
+    if soon:
+        soon.sort()
+        L.append("📅 财报窗口（≤14天）：" + "、".join("%s %s(%d天)" % (tk, d[5:], dd) for dd, tk, d in soon))
+    return "\n".join(L) + "\n\n"
+
+def _exceptions(snapshot, caps, earn):
+    """B42 exception engine: a holding appears ONLY if broken / over-cap / near-stop /
+    earnings<=14d / dilution-flagged. Healthy names collapse. Returns (md, plain_list)."""
+    today_d = dt.date.today()
+    exc, exc_plain, ok = [], [], []
+    for tk, d in sorted(snapshot.items(), key=lambda kv: -(kv[1].get("market_value") or 0)):
+        reasons = []
+        act = str((caps.get(tk) or {}).get("action", ""))
+        if act.startswith("TRIM"):
+            reasons.append("超上限→减 " + act.replace("TRIM ", ""))
+        if d.get("already_broken_down"):
+            reasons.append("已破位（无有效止损位）")
+        elif d.get("dist_to_stop_pct") is not None and d["dist_to_stop_pct"] < 5:
+            reasons.append("距止损仅 %s%%（$%s）" % (d["dist_to_stop_pct"], d.get("stop_review_level")))
+        ed = str(((earn or {}).get(tk) or {}).get("date", ""))[:10]
+        try:
+            dd = (dt.date.fromisoformat(ed) - today_d).days
+            if 0 <= dd <= 14:
+                reasons.append("财报 %s（%d天）" % (ed[5:], dd))
+        except Exception:
+            pass
+        if d.get("dilution_flag"):
+            reasons.append("稀释旗标（按 Serenity#7 核 EDGAR）")
+        if reasons:
+            line = "**%s** $%s（%s%%净值，盈亏 %s%%）：%s" % (
+                tk, format(int(d.get("market_value") or 0), ","), d.get("pct_of_net_liq"),
+                d.get("unreal_pnl_pct"), "；".join(reasons))
+            exc.append("- 🟠 " + line)
+            exc_plain.append(line.replace("**", ""))
+        else:
+            chg = d.get("day_chg_pct")
+            ok.append("%s %s%%" % (tk, round(chg, 1) if isinstance(chg, (int, float)) else "-"))
+    L = ["## ⚠️ 例外区（仅列状态异常/临界，B42）", ""]
+    L += exc if exc else ["- 今日无例外。"]
+    if ok:
+        L += ["", "其余 %d 票正常：%s（明细见附录）" % (len(ok), "、".join(ok))]
+    return "\n".join(L) + "\n\n---\n\n", exc_plain
+
+def _snapshot_md(snapshot, net_liq, cash):
+    """B42 appendix: compact 6-column snapshot (audit layer, not reading layer)."""
+    L = ["## 📋 附录 · 组合快照（紧凑版）", "",
+         "| 持仓 | 股数 | 市值$ | 盈亏% | 占净值% | 距止损% |", "|---|---|---|---|---|---|"]
+    for tk, d in sorted(snapshot.items(), key=lambda kv: -(kv[1].get("market_value") or 0)):
+        stop = "破位" if d.get("already_broken_down") else (
+            d.get("dist_to_stop_pct") if d.get("dist_to_stop_pct") is not None else "-")
+        sh = d.get("shares")
+        L.append("| %s | %s | %s | %s | %s | %s |" % (
+            tk, round(sh, 2) if isinstance(sh, (int, float)) else "-",
+            format(int(d.get("market_value") or 0), ","),
+            d.get("unreal_pnl_pct"), d.get("pct_of_net_liq"), stop))
+    L += ["", "净值 $%s ｜ 现金 $%s" % (format(int(net_liq), ","), format(round(cash or 0), ","))]
+    return "\n".join(L) + "\n"
+
 _MKT_ZONE_CN = {"high": ("高位/拥挤", "QQQ 定投：本月正常 1x，不加码；D1 回调子弹留好别动"),
                 "neutral": ("中性", "QQQ 定投：本月正常 1x"),
                 "deep_pullback": ("深度回调/恐慌", "QQQ 定投：符合 D1 子弹条件——核对 −10%/−15% GTC 挂单在位，可评估当月加投")}
@@ -332,8 +406,6 @@ def build() -> str:
     news = [n for n in fmp.stock_news(holdings, limit=25) if _recent(n)][:8]
     earn = {t: fmp.upcoming_earnings(t, today) for t in holdings}
     earn = {t: e for t, e in earn.items() if e}
-    macro = {s: screener._ext(quotes[s]) for s in [bench, "QQQ", "SMH", "SOXX", "XLK", "IGV", "XLU"]
-             if s in quotes}
     subs = screener.subtheme_strength(CFG["subthemes"], quotes, bench_vs200)
     candidates = screener.rank_candidates(CFG["subthemes"], quotes, bench_vs200,
                                           set(holdings) | exclude, top=10)
@@ -349,39 +421,28 @@ def build() -> str:
     situation = "Holdings " + ",".join(holdings) + "; weak/below-MA: %s; phase %s" % (weak, phase)
     lessons = mem.retrieve(situation, n=3)
 
+    exc_md, exc_plain = _exceptions(holdings_snapshot, caps, earn)
     bundle = dict(date=today, phase=phase, phase_rule=calendars.PHASE_GUARDRAIL.get(phase, ""),
-                  as_of=as_of, port_note=port_note, net_liq=net_liq, cash=cash, total_assets=total_assets,
-                  single_name_hard_cap_usd=hard_cap_usd, portfolio_heat_pct=portfolio_heat_pct,
-                  broken_down_holdings=broken, closed_positions=closed, benchmark=bench,
-                  bench_vs200=bench_vs200, holdings_snapshot=holdings_snapshot, risk_caps=caps,
-                  cross_validation=xval, edgar=edgar, earnings_calendar=earn, news=news, macro=macro,
-                  subthemes=subs, lessons=lessons, market_position=mkt,
-                  opened_positions=opened, discipline_violations=violations)
+                  as_of=as_of, port_note=port_note, net_liq=net_liq, cash=cash,
+                  portfolio_heat_pct=portfolio_heat_pct, market_position=mkt,
+                  broken_down_holdings=broken, closed_positions=closed, opened_positions=opened,
+                  discipline_violations=violations, exceptions=exc_plain,
+                  cross_validation=xval, edgar=edgar, news=news, lessons=lessons)
     if phase == "non_trading":
         return "[%s] US market closed; no brief today." % today
 
-    prompt = ("Write a CHINESE daily brief from the REAL data below. 8 sections (the 选股雷达 is appended "
-              "by code, do NOT write it):\n"
-              "(1) 组合快照 -- ONLY holdings_snapshot names; per name shares/avg_cost/market_value/"
-              "unreal_pnl/unreal_pnl_pct/pct_of_net_liq + price/day_chg (price=current FMP). Also net_liq/"
-              "cash/single_name_hard_cap_usd and the as_of date. If closed_positions non-empty, note them.\n"
-              "(2) 持仓关键消息 from news.\n(3) 大盘/宏观 from macro + bench_vs200.\n"
-              "(4) 财报/事件日历 from earnings_calendar.\n"
-              "(5) 技术位/支撑阻力: per holding vs50/vs200/off_high/rs_vs_spy/posture + stop_review_level "
-              "(real stop BELOW price) + dist_to_stop_pct; if already_broken_down=true say 已跌破技术位/"
-              "成本止损，按纪律评估减仓.\n"
-              "(6) 风控触发 from risk_caps (market_value vs cap_usd vs single_name_hard_cap_usd; "
-              "now also eff_corr/max_corr/n_theme_peers -- 同板块拥挤会收紧上限). "
-              "portfolio_heat_pct = open risk to stops / net liq, keep <6-8%. 稀释以 edgar[ticker] 为准: "
-              "shares_outstanding.yoy_pct(真实流通股变化)+ likely_split(拆股勿当稀释)+ dilution_flag; "
-              "FMP 的 dilution_yoy_pct 仅作旁证。若 edgar.dilution_flag 为真,按 Serenity #7 提示稀释风险。"
-              "也提示 broken_down_holdings.\n"
-              "(7) 今日操作提示 -- per flagged holding a 满足/注意/不满足 checklist.\n"
-              "(8) 待验证 -- mark any number NOT in cross_validation as 待验证. 列 edgar[ticker] 的 "
-              "dilution_filings/recent_filings(form+date)供人工查 SEC;edgar.available=false 标 EDGAR 不可用.\n"
+    prompt = ("Write a SHORT Chinese addendum. 3 sections ONLY, no tables, never restate numbers "
+              "already rendered elsewhere (action list/exceptions/appendix are code-rendered):\n"
+              "(1) 重大消息 -- from news: ONLY material events (guidance change, M&A, regulatory action, "
+              "earnings surprise, major product/customer win-loss). Max 3 bullets, one line each, "
+              "source+date. If none qualify write exactly: 无重大消息。\n"
+              "(2) 异常点评 -- 2-4 sentences on exceptions/discipline_violations/market_position only; "
+              "no per-holding tour.\n"
+              "(3) 待验证 -- numbers lacking cross-validation (cross_validation mismatches, "
+              "edgar.available=false, dilution filings needing manual SEC check). Max 5 bullets.\n"
               "Obey phase_rule. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
-              "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:95000])
-    body = llm.run(prompt, model=CFG["models"]["daily"], max_tokens=4200)
+              "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:60000])
+    body = llm.run(prompt, model=CFG["models"]["daily"], max_tokens=1800)
     header = ("> ⏱️ 持仓数据截至 %s（IBKR Flex 上一交易日；**当日交易可能未反映**——如需当日，Flex 周期改 Today）。\n\n"
               % as_of) if as_of else ""
     drift = ""
@@ -390,7 +451,12 @@ def build() -> str:
                  + ("新持仓待补注释/子板块归属: **" + ", ".join(drift_extra) + "**；" if drift_extra else "")
                  + ("config 中已不再持有(可删): " + ", ".join(drift_gone) + "。" if drift_gone else "")
                  + "\n\n")
-    return header + drift + action_md + body + "\n" + _candidates_md(candidates, subs)   # 行动清单+选股雷达 code-rendered
+    title = "# 美股投研日报 — %s%s\n\n" % (today, "（盘中快照：未收盘，勿当收盘复盘）" if phase == "intraday" else "")
+    lamps = _lamps_md(portfolio_heat_pct, cash, earn)
+    return (header + title + drift + action_md + lamps + exc_md
+            + "## 📰 消息与点评（LLM 附录）\n\n" + body + "\n\n---\n\n"
+            + _snapshot_md(holdings_snapshot, net_liq, cash)
+            + _candidates_md(candidates, subs))   # B42: 决策/例外/附录全代码直出，LLM 只写消息+点评+待验证
 
 def main():
     if not calendars.is_us_trading_day() and os.getenv("FORCE_RUN", "false").lower() != "true":
