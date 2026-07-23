@@ -94,6 +94,17 @@
         "exit",
         "SKHYV"
       ]
+    },
+    {
+      "id": "L9",
+      "situation": "AVERAGED DOWN on AAOI while underwater (-6.1%): 43.0248 -> 83.3987 shares.",
+      "lesson": "L1/Livermore violation recorded: added to a losing position. Compare outcome at exit vs the rule.",
+      "source": "auto: averaging-down detector (B37)",
+      "tags": [
+        "L1",
+        "violation",
+        "AAOI"
+      ]
     }
   ]
 }
