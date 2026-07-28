@@ -116,6 +116,17 @@
         "violation",
         "AAOI"
       ]
+    },
+    {
+      "id": "L11",
+      "situation": "AVERAGED DOWN on SPCX while underwater (-14.5%): 29.7344 -> 47.8997 shares.",
+      "lesson": "L1/Livermore violation recorded: added to a losing position. Compare outcome at exit vs the rule.",
+      "source": "auto: averaging-down detector (B37)",
+      "tags": [
+        "L1",
+        "violation",
+        "SPCX"
+      ]
     }
   ]
 }
