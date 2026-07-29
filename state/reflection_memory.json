@@ -127,6 +127,17 @@
         "violation",
         "SPCX"
       ]
+    },
+    {
+      "id": "L12",
+      "situation": "AVERAGED DOWN on SKHY while underwater (-14.8%): 267.6805 -> 306.1124 shares.",
+      "lesson": "L1/Livermore violation recorded: added to a losing position. Compare outcome at exit vs the rule.",
+      "source": "auto: averaging-down detector (B37)",
+      "tags": [
+        "L1",
+        "violation",
+        "SKHY"
+      ]
     }
   ]
 }
