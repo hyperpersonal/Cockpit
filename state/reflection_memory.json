@@ -138,6 +138,17 @@
         "violation",
         "SKHY"
       ]
+    },
+    {
+      "id": "L13",
+      "situation": "Closed/exited position MSFT (last unrealized -2.3%).",
+      "lesson": "Position MSFT left the book at ~-2.3%. Review: did the exit follow the thesis and stop discipline? Record realized outcome and what to repeat/avoid.",
+      "source": "auto: position-close detector",
+      "tags": [
+        "postmortem",
+        "exit",
+        "MSFT"
+      ]
     }
   ]
 }
