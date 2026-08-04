@@ -149,6 +149,17 @@
         "exit",
         "MSFT"
       ]
+    },
+    {
+      "id": "L14",
+      "situation": "AVERAGED DOWN on KLAC while underwater (-21.2%): 21.552 -> 49.4851 shares.",
+      "lesson": "L1/Livermore violation recorded: added to a losing position. Compare outcome at exit vs the rule.",
+      "source": "auto: averaging-down detector (B37)",
+      "tags": [
+        "L1",
+        "violation",
+        "KLAC"
+      ]
     }
   ]
 }
