@@ -160,6 +160,17 @@
         "violation",
         "KLAC"
       ]
+    },
+    {
+      "id": "L15",
+      "situation": "Closed/exited position TSM (last unrealized 1.3%).",
+      "lesson": "Position TSM left the book at ~1.3%. Review: did the exit follow the thesis and stop discipline? Record realized outcome and what to repeat/avoid.",
+      "source": "auto: position-close detector",
+      "tags": [
+        "postmortem",
+        "exit",
+        "TSM"
+      ]
     }
   ]
 }
