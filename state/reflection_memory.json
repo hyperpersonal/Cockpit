@@ -171,6 +171,16 @@
         "exit",
         "TSM"
       ]
+    },
+    {
+      "id": "L16",
+      "situation": "Opened NEW position RAM (posture=trend-unconfirmed/watch, vs50=-14.0, off_high=-61.1).",
+      "lesson": "Entry logged for RAM: posture was trend-unconfirmed/watch. If extended/wait-pullback, this was a chase entry (L2 risk) -- review at exit vs the rule.",
+      "source": "auto: position-open detector (B34)",
+      "tags": [
+        "entry",
+        "RAM"
+      ]
     }
   ]
 }
