@@ -181,6 +181,28 @@
         "entry",
         "RAM"
       ]
+    },
+    {
+      "id": "L17",
+      "situation": "Closed/exited position SPCX (last unrealized 16.8%).",
+      "lesson": "Position SPCX left the book at ~16.8%. Review: did the exit follow the thesis and stop discipline? Record realized outcome and what to repeat/avoid.",
+      "source": "auto: position-close detector",
+      "tags": [
+        "postmortem",
+        "exit",
+        "SPCX"
+      ]
+    },
+    {
+      "id": "L18",
+      "situation": "AVERAGED DOWN on CCXI while underwater (-9.7%): 370.9275 -> 654.8184 shares.",
+      "lesson": "L1/Livermore violation recorded: added to a losing position. Compare outcome at exit vs the rule.",
+      "source": "auto: averaging-down detector (B37)",
+      "tags": [
+        "L1",
+        "violation",
+        "CCXI"
+      ]
     }
   ]
 }

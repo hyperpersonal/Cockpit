@@ -2128,6 +2128,91 @@
      "trim_usd": null
     }
    }
+  },
+  {
+   "date": "2026-08-21",
+   "net_liq": 161294.182740686,
+   "heat_pct": 12.5,
+   "holdings": {
+    "AAOI": {
+     "shares": 113.4287,
+     "price": 124.15,
+     "signal": null,
+     "trim_usd": null
+    },
+    "ASX": {
+     "shares": 120.0,
+     "price": 36.255,
+     "signal": null,
+     "trim_usd": null
+    },
+    "AVGO": {
+     "shares": 8.3334,
+     "price": 366.015,
+     "signal": null,
+     "trim_usd": null
+    },
+    "CCXI": {
+     "shares": 654.8184,
+     "price": 14.44,
+     "signal": null,
+     "trim_usd": null
+    },
+    "GLW": {
+     "shares": 57.5107,
+     "price": 149.455,
+     "signal": null,
+     "trim_usd": null
+    },
+    "KLAC": {
+     "shares": 49.4851,
+     "price": 183.05,
+     "signal": null,
+     "trim_usd": null
+    },
+    "MRVL": {
+     "shares": 54.741,
+     "price": 233.98,
+     "signal": "trim",
+     "trim_usd": 31.0
+    },
+    "MU": {
+     "shares": 41.7557,
+     "price": 965.45001,
+     "signal": "trim",
+     "trim_usd": 29393.0
+    },
+    "NVDA": {
+     "shares": 50.4177,
+     "price": 215.24,
+     "signal": null,
+     "trim_usd": null
+    },
+    "ORCL": {
+     "shares": 164.617,
+     "price": 147.08,
+     "signal": "trim",
+     "trim_usd": 7258.0
+    },
+    "RAM": {
+     "shares": 413.2232,
+     "price": 13.21,
+     "signal": null,
+     "trim_usd": null
+    },
+    "SKHY": {
+     "shares": 306.1124,
+     "price": 165.9699,
+     "signal": "trim",
+     "trim_usd": 36211.0
+    },
+    "SOXX": {
+     "shares": 8.5838,
+     "price": 517.062,
+     "signal": null,
+     "trim_usd": null
+    }
+   }
   }
  ]
 }
