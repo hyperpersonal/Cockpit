@@ -1,26 +1,25 @@
 # Cockpit 配置宪法（机器可读）。系统每次运行先读它。详见 配置宪法_CONFIG_v1.md
 account:
-  net_liq_fallback: 107670        # 仅在 IBKR 掉线时用的兜底净值；正常每次从 IBKR 取
+  net_liq_fallback: 159240        # 仅在 IBKR 掉线时用的兜底净值（2026-08-22 同步）；正常每次从 IBKR 取
   total_assets_usd: 250000        # 总资产(Schwab 100k + IBKR 150k); 单票硬顶基数
-  schwab_core: { instrument: QQQ, target_usd: 100000, note: "被动长期，建仓策略待定" }
+  schwab_core: { instrument: QQQ, target_usd: 100000, note: "被动长期；D1 已定(2026-06-27)=立即30%+手动月定投30%x6+回调子弹40%(674/636 整数股GTC)，见 QQQ建仓方案_2026-06.md" }
 
 strategy: momentum_mainline + serenity_chokepoint   # 跟热点、不强行分散
 
-holdings:                          # 主动仓真实标的（2026-07-11 对 live IBKR 同步；IBKR 票=吉祥物，已排除）
+holdings:                          # 角色注释 + IBKR 掉线兜底（B33 起持仓名单由 live Flex 驱动；IBKR 票=吉祥物，已排除；2026-08-22 对 live 同步）
   - { ticker: NVDA, role: "半导体/主线龙头" }
-  - { ticker: MU,   role: "内存HBM/最大仓之一（已超$30k硬顶，待处理）" }
-  - { ticker: SKHYV, role: "SK海力士ADR（FMP已验证=SK hynix Inc./NASDAQ；Flex代码SKHYV）/最大仓（已超$30k硬顶，待处理）" }
-  - { ticker: ORCL, role: "软件云/破位-减仓信号中" }
-  - { ticker: MSFT, role: "软件云/落后" }
-  - { ticker: MRVL, role: "半导体/定制ASIC" }
+  - { ticker: MU,   role: "内存HBM双雄之一/超$30k硬顶（减仓信号持续中）" }
+  - { ticker: SKHY, role: "SK海力士ADR/第一大仓、超$30k硬顶（FMP已核=SK hynix Inc./NASDAQ，CIK 2120882；Flex代码2026-08起为SKHY，曾用SKHYV）" }
+  - { ticker: ORCL, role: "软件云/破位·减仓信号中（距止损<1%）" }
+  - { ticker: MRVL, role: "半导体/定制ASIC（禁再加仓，守20日低失效线）" }
   - { ticker: AVGO, role: "半导体/ASIC龙头" }
-  - { ticker: KLAC, role: "半导体设备（不在子板块地图）" }
-  - { ticker: ASX,  role: "封测ADR（待验证）" }
-  - { ticker: AAOI, role: "光模块" }
-  - { ticker: GLW,  role: "光通信玻璃（待验证）" }
-  - { ticker: SOXX, role: "半导体ETF持仓" }
-  - { ticker: CCXI, role: "身份待验证" }
-  - { ticker: SPCX, role: "疑似ETF（身份待验证）" }
+  - { ticker: KLAC, role: "半导体设备（2026-08 曾亏损摊平，L14 留痕）" }
+  - { ticker: ASX,  role: "封测ADR/OSAT低毛利环节" }
+  - { ticker: AAOI, role: "光模块（稀释旗标：流通股YoY+35.6%，424B5x3）" }
+  - { ticker: GLW,  role: "光通信玻璃（曾破止损参考位）" }
+  - { ticker: SOXX, role: "半导体ETF（与单股持仓高度重复，处置方案第一批候选）" }
+  - { ticker: CCXI, role: "Churchill Capital XI（SPAC空壳，体系外；两次亏损摊平 L18）" }
+  - { ticker: RAM,  role: "2x杠杆ETF(Roundhill T-REX 2X Long DRAM)——与不用杠杆红线冲突，处置待拍板(D2)" }
 exclude: [IBKR]                    # 吉祥物，不计入分析
 
 # AI 供应链子板块地图（取自 Serenity theses.md）——选股自下而上的池
@@ -43,7 +42,7 @@ risk:                              # 移植 ai-hedge-fund risk_manager
   dilution_atm_disqualifier: true            # Serenity #7（需人工/SEC 复核）
 
 data:
-  primary: FMP
+  primary: FMP                                # Starter 年付档（2026-07-18 由 Ultimate 降级；batch-quote 走单票 fallback，见 B31）
   positions: IBKR
   cross_validate: [SEC_EDGAR, YAHOO, 10-K/Q]  # 重大数字必须核；单一来源标「待验证」
   fail_open: true                             # 源失败→降级+标数据缺口，绝不阻塞/编造
@@ -65,7 +64,7 @@ redlines:
   - 非投资建议；不确定标「待验证」、不编造
   - 陈述文件/数据前必须真读取（read-before-describing）
 
-alerts:
+alerts:                    # B14 盘中警报已于 2026-07-19 整体退役（workflow Disabled）；参数保留备一键复用
   intraday_move_pct: 6.0   # 日内涨跌幅绝对值 >= 此值 触发异动警报（B14）
   news_alerts: false       # 新闻警报已关(2026-07-11 用户反馈全是噪音)——破位/±6%异动警报保留；重开改 true
   intraday_cron_utc: "13,43 13-20 * * 1-5" # ~每30分钟·美股时段·避整点；脚本内再判 phase（仅 intraday/尾盘竞价）
