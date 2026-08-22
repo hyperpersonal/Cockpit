@@ -8,6 +8,7 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
+    timeout-minutes: 15   # B43 guard (opus call is slower than daily)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
