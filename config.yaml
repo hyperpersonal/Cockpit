@@ -19,7 +19,7 @@ holdings:                          # 角色注释 + IBKR 掉线兜底（B33 起�
   - { ticker: GLW,  role: "光通信玻璃（曾破止损参考位）" }
   - { ticker: SOXX, role: "半导体ETF（与单股持仓高度重复，处置方案第一批候选）" }
   - { ticker: CCXI, role: "Churchill Capital XI（SPAC空壳，体系外；两次亏损摊平 L18）" }
-  - { ticker: RAM,  role: "2x杠杆ETF(Roundhill T-REX 2X Long DRAM)——与不用杠杆红线冲突，处置待拍板(D2)" }
+  - { ticker: RAM,  role: "2x杠杆ETF(Roundhill T-REX 2X Long DRAM)——红线v2窄门内合规(≈3.4%净值)；趋势工具：硬止损−15%/20日低，禁亏损加仓，负现金期间禁补仓" }
 exclude: [IBKR]                    # 吉祥物，不计入分析
 
 # AI 供应链子板块地图（取自 Serenity theses.md）——选股自下而上的池
@@ -63,6 +63,7 @@ redlines:
   - 绝不自动下单/转账，只给提示，用户手动执行
   - 非投资建议；不确定标「待验证」、不编造
   - 陈述文件/数据前必须真读取（read-before-describing）
+  - 杠杆ETF窄门（红线v2，2026-08-22 批准）：仅限2x做多；合计≤5%净值；账户负现金期间不得新开/补仓；硬止损−15%或20日低（先到者）无条件执行；对杠杆ETF亏损加仓=最高级违规；3x/反向/期货/期权卖方仍禁；红线修改仅在双周复盘日生效
 
 alerts:                    # B14 盘中警报已于 2026-07-19 整体退役（workflow Disabled）；参数保留备一键复用
   intraday_move_pct: 6.0   # 日内涨跌幅绝对值 >= 此值 触发异动警报（B14）
