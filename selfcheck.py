@@ -81,6 +81,17 @@ DONE_FINGERPRINTS = {
     "B19": ("cockpit/risk.py", "n_theme_peers"),
     "B20": ("cockpit/daily_brief.py", "ibkr_mv_refonly"),
     "B22": ("cockpit/daily_brief.py", "_candidates_md"),
+    "B24": ("cockpit/daily_brief.py", "B24"),
+    "B29": ("cockpit/biweekly_review.py", "_adherence_md"),
+    "B31": ("cockpit/fmp.py", "fall back to per-symbol"),
+    "B32": ("cockpit/daily_brief.py", "_action_plan"),
+    "B33": ("cockpit/daily_brief.py", "IBKR-DRIVEN"),
+    "B34": ("cockpit/daily_brief.py", "_opens_and_violations"),
+    "B37": ("cockpit/daily_brief.py", "AVERAGED DOWN"),
+    "B38": ("cockpit/screener.py", "wait_20pct"),
+    "B39": ("cockpit/screener.py", "market_position"),
+    "B42": ("cockpit/daily_brief.py", "_lamps_md"),
+    "B43": (".github/workflows/daily-brief.yml", "timeout-minutes"),
 }
 for bid, (relpath, needle) in DONE_FINGERPRINTS.items():
     if not re.search(rf"^\|\s*{bid}\b.*(DONE|✅)", backlog_txt, re.M):
