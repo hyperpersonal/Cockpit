@@ -132,6 +132,11 @@ def build() -> str:
     total_assets = CFG["account"].get("total_assets_usd", 250000)
     hard_cap_usd = total_assets * CFG["risk"]["single_name_hard_cap_pct_of_total"] / 100.0
     closes = _hist_window(_corr_universe(holdings, theme_of))
+    # B24: risk-table MV on the SAME price basis as the snapshot -- shares x FMP
+    # current price; Flex prior-day mv only when no live quote (fail-open).
+    cur_mv = {t: ((positions.get(t, {}).get("shares") or 0) * quotes[t]["price"])
+                 if (positions.get(t, {}).get("shares") and quotes.get(t, {}).get("price")) else mv
+              for t, mv in cur_mv.items()}
     caps = risk.position_caps(closes, net_liq, cur_mv, cash, set(holdings), hard_cap_usd, theme_of)
     setups = {t: screener.name_setup(t, quotes[t], CFG["risk"]["no_chase_bias_threshold_pct"], bench_vs200)
               for t in holdings if t in quotes}
