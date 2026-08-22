@@ -8,6 +8,7 @@ on:
 jobs:
   brief:
     runs-on: ubuntu-latest
+    timeout-minutes: 12   # B43: 2026-08-06 run hung ~15m then was GHA-cancelled; bound the job
     permissions:
       contents: write
     steps:
