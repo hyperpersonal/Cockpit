@@ -7,7 +7,7 @@ from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, llm, notify, calendars
 from .memory import ReflectionMemory
-from .daily_brief import _theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md, _corr_universe
+from .daily_brief import _theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md, _corr_universe, _theme_exposure
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -145,6 +145,7 @@ def build() -> str:
     heat_usd = sum((d["market_value"] or 0) * (d["dist_to_stop_pct"] or 0) / 100.0
                    for d in holdings_snapshot.values())
     portfolio_heat_pct = round(heat_usd / net_liq * 100, 1) if net_liq else None
+    theme_alerts, _ = _theme_exposure(holdings_snapshot, theme_of, net_liq)   # B36 parity
     subs = screener.subtheme_strength(CFG["subthemes"], quotes, bench_vs200)
     candidates = screener.rank_candidates(CFG["subthemes"], quotes, bench_vs200,
                                           set(holdings) | exclude, top=12)
@@ -157,7 +158,8 @@ def build() -> str:
     bundle = dict(date=today, benchmark=bench, bench_vs200=bench_vs200, performance=performance,
                   net_liq=net_liq, cash=cash, port_note=port_note, single_name_hard_cap_usd=hard_cap_usd,
                   portfolio_heat_pct=portfolio_heat_pct, holdings_snapshot=holdings_snapshot,
-                  risk_caps=caps, subthemes=subs, new_candidates=candidates, lessons=lessons)
+                  risk_caps=caps, subthemes=subs, new_candidates=candidates, lessons=lessons,
+                  theme_exposure_alerts=theme_alerts)
     prompt = ("Write a CHINESE biweekly review from the REAL data below. 7-section 宪法 format:\n"
               "(1) 业绩 vs 基准 -- use performance (portfolio_return_pct vs benchmark_return_pct over "
               "window; alpha_pct). If performance.status says accumulating, say 业绩待积累(NAV历史不足).\n"
@@ -166,7 +168,8 @@ def build() -> str:
               "(3) 逐票逻辑复查 -- per holding in holdings_snapshot: still on the leading main-line? "
               "use rs_vs_spy/posture/vs200 + market_value/unreal_pnl/pct_of_net_liq; flag laggards.\n"
               "(4) 风险敞口 -- risk_caps (EWMA vol x corr; market_value vs cap_usd vs hard cap), "
-              "portfolio_heat_pct (open risk to stops, keep <6-8%), any dilution_flag.\n"
+              "portfolio_heat_pct (open risk to stops, keep <6-8%), theme_exposure_alerts (B36 "
+              "sub-theme concentration incl leverage factors -- flag prominently), any dilution_flag.\n"
               "(5) 反思记忆 -- from lessons: what worked / didn't + the applicable lesson.\n"
               "(6) 下阶段打法 + 操作提示(满足/注意/不满足 checklist) -- incl top new_candidates to "
               "rotate toward (NOT held; with size_... not given here, just rank/posture).\n"
