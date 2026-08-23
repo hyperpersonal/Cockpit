@@ -6,7 +6,7 @@ per-holding REAL stop + portfolio heat -> append NAV history -> Claude (sections
 the 选股雷达 candidate table + as-of label and append (so it's NEVER dropped by the LLM). Chinese."""
 from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
-from . import fmp, ibkr, risk, screener, crossval, llm, notify, calendars
+from . import fmp, ibkr, risk, screener, scanner, crossval, llm, notify, calendars
 from .memory import ReflectionMemory
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -574,7 +574,8 @@ def build() -> str:
     return (header + title + drift + action_md + lamps + exc_md
             + "## 📰 消息与点评（LLM 附录）\n\n" + body + "\n\n---\n\n"
             + _snapshot_md(holdings_snapshot, net_liq, cash)
-            + _candidates_md(candidates, subs))   # B42: 决策/例外/附录全代码直出，LLM 只写消息+点评+待验证
+            + _candidates_md(candidates, subs)
+            + scanner.daily_scan(bench_vs200))   # B42 直出 + B28/B41 地图外扫描（fail-open）
 
 def main():
     if not calendars.is_us_trading_day() and os.getenv("FORCE_RUN", "false").lower() != "true":
