@@ -60,6 +60,18 @@ schedule:
   biweekly_anchor_date: "2026-06-27"     # 双周锚点（其后每14天）
   skip_us_holidays: true                 # exchange-calendars XNYS
 
+scanner:                     # B28+B41 全市场新主线扫描（地图外发现；每日轮扫分片，Starter 额度友好）
+  enabled: true
+  min_mcap_usd: 2000000000   # 宇宙下限：市值 ≥ $2B
+  min_price: 10              # 价格 ≥ $10
+  min_dollar_vol_usd: 50000000  # 日成交额 ≥ $50M（价×量 后置过滤）
+  near_high_pct: 5.0         # 距 52 周高 ≤5% 算贴近新高
+  rs_min_vs_spy: 20          # RS 代理（vs200 − SPY vs200）达标线
+  cluster_min_names: 3       # 同业 ≥3 只命中 = 疑似新主线簇
+  cluster_suggest_days: 5    # 簇持续 ≥5 天 → 建议加入 subthemes（自然日近似）
+  shard_size: 250            # 每日扫描票数（全宇宙 ~3-5 个交易日轮一遍）
+  universe_refresh_days: 7   # 宇宙清单刷新周期
+
 models:
   daily: claude-sonnet-4-6
   biweekly: claude-opus-4-8
