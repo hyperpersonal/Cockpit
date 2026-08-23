@@ -32,6 +32,12 @@ subthemes:
   power_grid:       { etfs: [XLU],       names: [VST, CEG, FLNC] }
   ai_software:      { etfs: [IGV],       names: [MSFT, ORCL, PLTR] }
   big_tech:         { etfs: [XLK, QQQ],  names: [] }
+  # 以下四层来自「AI数据中心研究_十层框架_v1.md」(2026-08-23)，把研究结论回灌进雷达/扫描器视野
+  networking_dc:    { etfs: [],          names: [ANET, ALAB, CRDO, CIEN] }        # L3 网络互连（COHR/LITE/AAOI 在 optical_cpo）
+  power_equipment:  { etfs: [],          names: [GEV, ETN, NVT, HUBB, MOD] }      # L5 供配电 + L6 冷却（设备侧；发电侧见 power_grid）
+  adv_packaging:    { etfs: [],          names: [AMKR, ONTO, CAMT] }              # L7 先进封装/检测（ASX 已持）
+  energy_gas:       { etfs: [],          names: [ET, WMB, KMI, CCJ] }             # L9 能源基建 + 铀
+  ai_apps:          { etfs: [],          names: [DUOL, APP, NOW, CRM] }           # AI 应用层（用户 2026-08-23 拍板；名单可随时增删）
 benchmark: SPY
 
 risk:                              # 移植 ai-hedge-fund risk_manager
