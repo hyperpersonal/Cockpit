@@ -40,6 +40,12 @@ risk:                              # 移植 ai-hedge-fund risk_manager
   # 波动率→上限 与 相关性→乘数 见 risk.py（与源码一致）
   no_chase_bias_threshold_pct: 5.0            # ZhuLinsen 默认；强趋势放宽 1.5x
   dilution_atm_disqualifier: true            # Serenity #7（需人工/SEC 复核）
+  theme_exposure_alert_pct: 40               # B36 主题聚合敞口警戒线%（含杠杆倍数折算）
+  theme_overrides: { RAM: memory_hbm }       # 地图外持仓的主题归属（供 B36 敞口合并）
+  leverage_factors: { RAM: 2.0 }             # 杠杆产品按基础敞口倍数计入主题敞口（红线v2⑥）
+  profit_take_trigger_pct: 25                # B45 止盈触发：浮盈≥此值 提示减仓/上移止损
+  profit_take_fraction: 0.33                 # B45 止盈建议减仓比例
+  reentry_watch_days: 90                     # B44 再入场观察有效期（天）
 
 data:
   primary: FMP                                # Starter 年付档（2026-07-18 由 Ultimate 降级；batch-quote 走单票 fallback，见 B31）
