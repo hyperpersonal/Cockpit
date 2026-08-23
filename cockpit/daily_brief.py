@@ -210,6 +210,65 @@ def _append_signal_log(today, net_liq, heat_pct, snapshot, caps):
     except Exception:
         pass
 
+def _theme_exposure(snapshot, theme_of, net_liq):
+    """B36: aggregate sub-theme exposure vs net liq. Leveraged ETFs count at their leverage
+    factor (config risk.leverage_factors + risk.theme_overrides), so a 2x DRAM ETF adds 2x its
+    MV to memory_hbm (red-line v2 clause 6). Returns (alerts_over_threshold, full_map)."""
+    rk = CFG.get("risk", {}) or {}
+    overrides = rk.get("theme_overrides", {}) or {}
+    lev = rk.get("leverage_factors", {}) or {}
+    thr = float(rk.get("theme_exposure_alert_pct", 40))
+    agg = {}
+    for t, d in (snapshot or {}).items():
+        mv = d.get("market_value") or 0
+        th = overrides.get(t) or theme_of.get(t) or "unmapped"
+        agg[th] = agg.get(th, 0) + mv * float(lev.get(t, 1.0))
+    alerts = []
+    if net_liq:
+        for th, usd in sorted(agg.items(), key=lambda kv: -kv[1]):
+            pct = round(usd / net_liq * 100, 1)
+            if pct >= thr and th != "unmapped":
+                alerts.append({"subtheme": th, "usd": round(usd), "pct": pct, "threshold": thr})
+    return alerts, agg
+
+def _reentry_load():
+    try:
+        return json.load(open(ROOT / "state" / "reentry_watch.json", encoding="utf-8")).get("watch", {})
+    except Exception:
+        return {}
+
+def _reentry_update(closed, quotes, today, net_liq, maxpos_pct):
+    """B44 re-entry watch: every fully-closed position enters a watch list; when it later CLOSES
+    back above its 50DMA the action plan proposes a rule-based re-entry with fresh 1%-risk
+    sizing. Turns stop-out whipsaw into a bounded, rule-governed round trip (prompt once,
+    expire after risk.reentry_watch_days). Fail-open; state committed by the workflow."""
+    watch = _reentry_load()
+    days = int(CFG.get("risk", {}).get("reentry_watch_days", 90))
+    for t in closed or []:
+        if t and t not in watch:
+            watch[t] = {"exit_date": today, "exit_price": (quotes.get(t) or {}).get("price"),
+                        "prompted": None}
+    cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    watch = {t: w for t, w in watch.items() if str(w.get("exit_date") or today) >= cutoff}
+    prompts = []
+    for t, w in watch.items():
+        if w.get("prompted"):
+            continue
+        q = quotes.get(t) or {}
+        px, a50 = q.get("price"), q.get("priceAvg50")
+        if px and a50 and px > a50:
+            sz = risk.position_size(net_liq, px, px * 0.92, 1.0, maxpos_pct) or {}
+            prompts.append({"ticker": t, "price": px, "ma50": round(a50, 2),
+                            "exit_date": w.get("exit_date"),
+                            "shares": sz.get("shares"), "value": sz.get("position_value")})
+            w["prompted"] = today
+    try:
+        json.dump({"watch": watch}, open(ROOT / "state" / "reentry_watch.json", "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+    return prompts
+
 def _lamps_md(heat_pct, cash, earn):
     """B42 status lamps: heat / cash-margin / earnings window. One glance, code-rendered."""
     heat_flag = "🔴" if (heat_pct or 0) >= 6 else "🟢"
@@ -288,7 +347,8 @@ _MKT_ZONE_CN = {"high": ("高位/拥挤", "QQQ 定投：本月正常 1x，不加
                 "neutral": ("中性", "QQQ 定投：本月正常 1x"),
                 "deep_pullback": ("深度回调/恐慌", "QQQ 定投：符合 D1 子弹条件——核对 −10%/−15% GTC 挂单在位，可评估当月加投")}
 
-def _action_plan(snapshot, caps, heat_pct, candidates, cash, hard_cap_usd, violations=None, mkt=None):
+def _action_plan(snapshot, caps, heat_pct, candidates, cash, hard_cap_usd, violations=None, mkt=None,
+                 theme_alerts=None, profit_takes=None, reentries=None):
     """B32: deterministic TODAY-action list, code-rendered at the TOP of the email.
     Order: risk-off first (over-cap TRIM / broken-down), then a heat gate (>=6% -> no new buys),
     then at most 2 buyable-on-support candidates with 1%-risk sizing. Explicit "do nothing"
@@ -303,6 +363,10 @@ def _action_plan(snapshot, caps, heat_pct, candidates, cash, hard_cap_usd, viola
     if violations:
         L += ["**⛔ 纪律违规检测（上一交易日，B37）：**"] + [
             "- ⛔ " + v + "（规则=利弗莫尔/L1：只在浮盈中加仓，绝不亏损补仓）" for v in violations] + [""]
+    if theme_alerts:
+        L += ["**🟣 主题集中警戒（B36 · 杠杆产品按倍数折算）：**"] + [
+            "- 🟣 **%s** 合计 $%s = **%.1f%% 净值**（警戒线 %.0f%%）→ 该主题只减不加（规则=主题聚合敞口）" % (
+                a["subtheme"], format(a["usd"], ","), a["pct"], a["threshold"]) for a in theme_alerts] + [""]
     sells = []
     for tkr, d in sorted(snapshot.items()):
         c = caps.get(tkr, {})
@@ -315,6 +379,30 @@ def _action_plan(snapshot, caps, heat_pct, candidates, cash, hard_cap_usd, viola
             sells.append("- 🔴 **%s：已破位（无有效止损位）→ 按纪律评估减仓/清仓**（规则=破位纪律/L1）" % tkr)
     if sells:
         L += ["**先卖/减（风险优先）：**"] + sells + [""]
+    trim_total = 0.0
+    for tkr in snapshot:
+        act = str((caps.get(tkr) or {}).get("action", ""))
+        if act.startswith("TRIM"):
+            try: trim_total += float(act.replace("TRIM $", "").replace(",", ""))
+            except Exception: pass
+    if sells or (cash or 0) < -100:
+        L.append("**💸 卖出所得流向（规则=资金优先级 B46）：**")
+        if (cash or 0) < -100:
+            L.append("- 建议减仓合计 ≈ $%s（破位票清仓另计）→ ① 优先偿还保证金负债（当前 $%s，先停利息）；"
+                     "② 负债清零前不开新仓、不补杠杆产品（红线v2③）；③ 现金转正后：热度回预算内 → 等回调候选到价分批 → 余款留作弹药。"
+                     % (format(round(trim_total), ","), format(round(cash), ",")))
+        else:
+            L.append("- 建议减仓合计 ≈ $%s → ① 热度回到预算内前不开新仓；② 等回调候选到价分批；③ 其余留作现金弹药。"
+                     % format(round(trim_total), ","))
+        L.append("")
+    if profit_takes:
+        L.append("**💰 止盈阶梯（B45）：**")
+        for p in profit_takes:
+            tr = ("或将止损上移至 10 日低 $%s" % p["low10"]) if p.get("low10") else "或改用移动止损"
+            L.append("- 💰 **%s：浮盈 %.1f%% ≥ +%.0f%% → 建议止盈减 %d%% ≈ $%s**，%s（规则=止盈阶梯：锁一部分，余仓不封顶）" % (
+                p["ticker"], p["pnl_pct"], p["trigger"], round(p["frac"] * 100),
+                format(p["trim_usd"], ","), tr))
+        L.append("")
     if heat_pct is not None and heat_pct >= 6.0:
         L.append("**买入：今天不开新仓** —— 组合热度 %.1f%% 已达预算(6-8%%)上限；先执行减仓释放风险预算（规则=热度闸门）。" % heat_pct)
     else:
@@ -344,6 +432,15 @@ def _action_plan(snapshot, caps, heat_pct, candidates, cash, hard_cap_usd, viola
         for c in waits:
             L.append("- ⏳ **%s**：等 $%s（52周高−20%%）/ $%s（−25%%）/ 回踩50日线 $%s" % (
                 c.get("ticker"), c.get("wait_20pct"), c.get("wait_25pct"), c.get("wait_ma50")))
+    if reentries:
+        L.append("")
+        L.append("**🔁 再入场观察（B44 · 止损/清仓后的回场规则）：**")
+        gate = "（⚠️ 当前热度超预算：先完成减仓再执行）" if (heat_pct is not None and heat_pct >= 6.0) else ""
+        for r in reentries:
+            L.append("- 🔁 **%s**：%s 离场后已收盘重新站上 50 日线（$%s > $%s）→ 若再入场按 1%% 风险 %s 股 ≈ $%s，止损=入场−8%%%s" % (
+                r["ticker"], r.get("exit_date") or "?", r["price"], r["ma50"],
+                r.get("shares") or "-",
+                format(int(r["value"]), ",") if r.get("value") else "-", gate))
     L += ["", "---", ""]
     return "\n".join(L)
 
@@ -374,7 +471,8 @@ def build() -> str:
         positions = {}; cur_mv = {}
         holdings = cfg_holdings                                   # fail-open: IBKR down -> config list
         port_note = "IBKR offline: shares/cost/P&L unknown (data gap); caps shown as room-from-flat."
-    quotes = screener.quote_map(sorted(set(_universe()) | set(holdings) | {"^VIX"}))
+    reentry_prev = _reentry_load()                              # B44: keep quotes for watched names
+    quotes = screener.quote_map(sorted(set(_universe()) | set(holdings) | set(reentry_prev) | {"^VIX"}))
     bench_vs200 = 0.0
     if bench in quotes and quotes[bench].get("priceAvg200"):
         bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
@@ -419,8 +517,21 @@ def build() -> str:
         q = quotes.get(c["ticker"], {}); px = q.get("price")
         c["size_1pct_stop8"] = risk.position_size(net_liq, px, px * 0.92, 1.0, maxpos_pct) if px else None
     mkt = screener.market_position(quotes)
+    theme_alerts, _theme_map = _theme_exposure(holdings_snapshot, theme_of, net_liq)   # B36
+    pt_trig = float(CFG.get("risk", {}).get("profit_take_trigger_pct", 25))            # B45
+    pt_frac = float(CFG.get("risk", {}).get("profit_take_fraction", 0.33))
+    profit_takes = []
+    for t, d in holdings_snapshot.items():
+        pp = d.get("unreal_pnl_pct")
+        if pp is not None and pp >= pt_trig and d.get("market_value"):
+            lows = (closes.get(t) or [])[:10]          # FMP hist rows are newest-first
+            profit_takes.append({"ticker": t, "pnl_pct": pp, "trigger": pt_trig, "frac": pt_frac,
+                                 "trim_usd": round(d["market_value"] * pt_frac),
+                                 "low10": round(min(lows), 2) if lows else None})
+    reentries = _reentry_update(closed, quotes, today, net_liq, maxpos_pct)            # B44
     action_md = _action_plan(holdings_snapshot, caps, portfolio_heat_pct, candidates, cash, hard_cap_usd,
-                             violations=violations, mkt=mkt)
+                             violations=violations, mkt=mkt, theme_alerts=theme_alerts,
+                             profit_takes=profit_takes, reentries=reentries)
 
     weak = [t for t, s in setups.items() if not s["stage2"]]
     situation = "Holdings " + ",".join(holdings) + "; weak/below-MA: %s; phase %s" % (weak, phase)
@@ -432,6 +543,8 @@ def build() -> str:
                   portfolio_heat_pct=portfolio_heat_pct, market_position=mkt,
                   broken_down_holdings=broken, closed_positions=closed, opened_positions=opened,
                   discipline_violations=violations, exceptions=exc_plain,
+                  theme_exposure_alerts=theme_alerts, profit_take_prompts=profit_takes,
+                  reentry_prompts=reentries,
                   cross_validation=xval, edgar=edgar, news=news, lessons=lessons)
     if phase == "non_trading":
         return "[%s] US market closed; no brief today." % today
