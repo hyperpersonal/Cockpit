@@ -1,0 +1,37 @@
+name: 自检闸门 Selfcheck
+# B52 (2026-08-23): selfcheck.py existed since June but only ever ran in Claude's sandbox --
+# never on GitHub. A bad paste therefore entered production silently (it has happened: risk.py
+# once contained llm.py's body). This gate runs the same mechanical checks on every push, so a
+# broken commit fails within ~30s and GitHub emails you, instead of surfacing as a broken brief.
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["state/**"]      # the daily workflow commits state/ -- no need to re-check
+  pull_request:
+  workflow_dispatch:
+jobs:
+  selfcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install (stdlib + pyyaml only -- selfcheck needs no network deps)
+        run: pip install --quiet pyyaml
+      - name: Run selfcheck (7 gates)
+        run: python3 selfcheck.py
+      - name: Byte-level sanity -- every module parses under the runtime Python
+        run: python3 -m compileall -q cockpit/ selfcheck.py
+      - name: config.yaml must parse and carry the behavioural keys
+        run: |
+          python3 - <<'PY'
+          import yaml, sys
+          cfg = yaml.safe_load(open("config.yaml", encoding="utf-8"))
+          need = ["account", "holdings", "subthemes", "risk", "schedule", "models", "redlines"]
+          missing = [k for k in need if k not in cfg]
+          if missing:
+              sys.exit("config.yaml missing top-level keys: %s" % missing)
+          print("config.yaml OK -- %d holdings, %d subthemes" % (
+              len(cfg.get("holdings") or []), len(cfg.get("subthemes") or {})))
+          PY
