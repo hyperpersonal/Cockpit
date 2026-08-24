@@ -52,6 +52,10 @@ risk:                              # 移植 ai-hedge-fund risk_manager
   profit_take_trigger_pct: 25                # B45 止盈触发：浮盈≥此值 提示减仓/上移止损
   profit_take_fraction: 0.33                 # B45 止盈建议减仓比例
   reentry_watch_days: 90                     # B44 再入场观察有效期（天）
+  # B48 持仓体检（2026-08-23 用户拍板）：执行止损改用 20 日收盘低×0.99；200日线降级为趋势旗标
+  high_conviction_rs: 20                     # RS(vs200−SPY) ≥ 此值 = 已证明相对领先 → 用高风险档
+  risk_pct_high: 2.0                         # 高信念票单笔风险%（路线乙）
+  risk_pct_base: 1.0                         # 其余持仓单笔风险%
 
 data:
   primary: FMP                                # Starter 年付档（2026-07-18 由 Ultimate 降级；batch-quote 走单票 fallback，见 B31）

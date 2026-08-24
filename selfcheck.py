@@ -98,6 +98,7 @@ DONE_FINGERPRINTS = {
     "B46": ("cockpit/daily_brief.py", "B46"),
     "B28": ("cockpit/scanner.py", "_clusters"),
     "B41": ("cockpit/scanner.py", "_growth_ok"),
+    "B48": ("cockpit/daily_brief.py", "_position_audit"),
 }
 for bid, (relpath, needle) in DONE_FINGERPRINTS.items():
     if not re.search(rf"^\|\s*{bid}\b.*(DONE|✅)", backlog_txt, re.M):

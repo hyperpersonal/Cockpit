@@ -7,7 +7,8 @@ from __future__ import annotations
 import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, llm, notify, calendars
 from .memory import ReflectionMemory
-from .daily_brief import _theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md, _corr_universe, _theme_exposure
+from .daily_brief import (_theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md,
+                          _corr_universe, _theme_exposure, _position_audit, _audit_md)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -141,11 +142,13 @@ def build() -> str:
     setups = {t: screener.name_setup(t, quotes[t], CFG["risk"]["no_chase_bias_threshold_pct"], bench_vs200)
               for t in holdings if t in quotes}
     dilution = {t: fmp.shares_growth(t) for t in holdings}
-    holdings_snapshot = _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution)
+    holdings_snapshot = _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution,
+                                           closes=closes)          # B48 parity
     heat_usd = sum((d["market_value"] or 0) * (d["dist_to_stop_pct"] or 0) / 100.0
                    for d in holdings_snapshot.values())
     portfolio_heat_pct = round(heat_usd / net_liq * 100, 1) if net_liq else None
     theme_alerts, _ = _theme_exposure(holdings_snapshot, theme_of, net_liq)   # B36 parity
+    audit_rows, audit_tot = _position_audit(holdings_snapshot, caps, net_liq, theme_of, hard_cap_usd)  # B48
     subs = screener.subtheme_strength(CFG["subthemes"], quotes, bench_vs200)
     candidates = screener.rank_candidates(CFG["subthemes"], quotes, bench_vs200,
                                           set(holdings) | exclude, top=12)
@@ -159,7 +162,7 @@ def build() -> str:
                   net_liq=net_liq, cash=cash, port_note=port_note, single_name_hard_cap_usd=hard_cap_usd,
                   portfolio_heat_pct=portfolio_heat_pct, holdings_snapshot=holdings_snapshot,
                   risk_caps=caps, subthemes=subs, new_candidates=candidates, lessons=lessons,
-                  theme_exposure_alerts=theme_alerts)
+                  theme_exposure_alerts=theme_alerts, position_audit_totals=audit_tot)
     prompt = ("Write a CHINESE biweekly review from the REAL data below. 7-section 宪法 format:\n"
               "(1) 业绩 vs 基准 -- use performance (portfolio_return_pct vs benchmark_return_pct over "
               "window; alpha_pct). If performance.status says accumulating, say 业绩待积累(NAV历史不足).\n"
@@ -176,7 +179,8 @@ def build() -> str:
               "(7) 待验证. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
               "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:95000])
     body = llm.run(prompt, model=CFG["models"]["biweekly"], max_tokens=4600)
-    return body + _adherence_md() + _candidates_md(candidates, subs)   # 记分板+雷达 code-rendered
+    return (body + _audit_md(audit_rows, audit_tot)
+            + _adherence_md() + _candidates_md(candidates, subs))   # 体检+记分板+雷达 code-rendered
 
 def main():
     if not _is_review_week() and os.getenv("FORCE_RUN", "false").lower() != "true":

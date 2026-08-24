@@ -98,8 +98,12 @@ def _reflect_on_closes(positions, exclude, mem, today):
     except Exception:
         pass
     return closed, prev
-def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dilution_on=True):
-    """B20: market value & P&L use the CURRENT FMP price x IBKR shares (not the stale Flex price)."""
+def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dilution_on=True, closes=None):
+    """B20: market value & P&L use the CURRENT FMP price x IBKR shares (not the stale Flex price).
+    B48 (2026-08-23, user decision): the EXECUTION stop is the 20-day closing low x0.99 -- a level
+    that survives normal volatility, unlike max(200DMA, cost*0.8) which is either far below or an
+    anchored pseudo-stop. The 200DMA keeps its own life as a TREND flag (`below_200dma`) so the
+    'trend is broken' signal is not lost. Falls back to the old rule when history is missing."""
     snap = {}
     for t in holdings:
         s = setups.get(t, {})
@@ -111,10 +115,16 @@ def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, d
         cost_basis = shares * avg if (shares and avg) else None
         pnl = (mv - cost_basis) if (mv and cost_basis) else None
         pnl_pct = round(pnl / cost_basis * 100, 1) if (pnl is not None and cost_basis) else None
-        cand_levels = [x for x in [a200, (avg * 0.8 if avg else None)] if x]
-        below = [L for L in cand_levels if price and price > L]
-        stop_level = max(below) if below else None
-        already_broken = bool(cand_levels and price and not below)
+        hist = (closes or {}).get(t) or []                       # B48: FMP light rows are NEWEST-first
+        low20 = min(hist[:20]) if len(hist) >= 5 else None
+        if low20 and price:
+            stop_level = round(low20 * 0.99, 2)
+            already_broken = price <= stop_level                 # today printed a new 20-day low
+        else:                                                    # fail-open: pre-B48 rule
+            cand_levels = [x for x in [a200, (avg * 0.8 if avg else None)] if x]
+            below = [L for L in cand_levels if price and price > L]
+            stop_level = max(below) if below else None
+            already_broken = bool(cand_levels and price and not below)
         dist_to_stop_pct = round((price - stop_level) / price * 100, 1) if (price and stop_level) else None
         dil = dilution.get(t)
         snap[t] = {"shares": shares, "avg_cost": avg, "market_value": round(mv, 0) if mv else None,
@@ -126,6 +136,9 @@ def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, d
                    "rs_vs_spy": s.get("rs_vs_spy"), "posture": s.get("posture"),
                    "stop_review_level": round(stop_level, 2) if stop_level else None,
                    "dist_to_stop_pct": dist_to_stop_pct, "already_broken_down": already_broken,
+                   "stop_basis": ("20日低" if low20 else "200日线/成本×0.8(史缺)"),
+                   "below_200dma": bool(price and a200 and price < a200),
+                   "risk_usd": round((mv or 0) * (price - stop_level) / price) if (mv and price and stop_level and price > stop_level) else None,
                    "dilution_yoy_pct": round(dil * 100, 1) if dil is not None else None,
                    "dilution_flag": bool(dilution_on and dil is not None and dil > 0.05)}
     return snap
@@ -268,6 +281,120 @@ def _reentry_update(closed, quotes, today, net_liq, maxpos_pct):
     except Exception:
         pass
     return prompts
+
+def _layer_of(t, theme_of):
+    rk = CFG.get("risk", {}) or {}
+    return (rk.get("theme_overrides", {}) or {}).get(t) or theme_of.get(t) or "unmapped"
+
+def _position_audit(snapshot, caps, net_liq, theme_of, hard_cap_usd):
+    """B48 position audit: for every HOLDING answer the question the risk engine never answered --
+    'given a stop you can actually live with, how big should this be?'
+
+    Per name: execution stop (20d low) -> $ at risk -> % of NAV -> risk tier (2% for names with
+    proven relative leadership RS >= high_conviction_rs, else 1%) -> target position = min(risk-derived,
+    vol x corr cap, $30k hard cap) -> how much to cut. Plus within-layer RS rank so the LAYER'S
+    WEAKEST name is named (duplicate holdings in one layer were invisible before). Fail-open."""
+    rk = CFG.get("risk", {}) or {}
+    hi_rs = float(rk.get("high_conviction_rs", 20))
+    pct_hi = float(rk.get("risk_pct_high", 2.0))
+    pct_base = float(rk.get("risk_pct_base", 1.0))
+    layers = {}
+    for t, d in (snapshot or {}).items():
+        layers.setdefault(_layer_of(t, theme_of), []).append((t, d.get("rs_vs_spy")))
+    rank = {}
+    for L, members in layers.items():
+        ordered = sorted(members, key=lambda kv: -(kv[1] if kv[1] is not None else -999))
+        for i, (t, _rs) in enumerate(ordered, 1):
+            rank[t] = (L, i, len(ordered))
+    rows, tot_risk, tot_cut = [], 0.0, 0.0
+    for t, d in sorted(snapshot.items(), key=lambda kv: -(kv[1].get("market_value") or 0)):
+        mv, px, stop = d.get("market_value"), d.get("price"), d.get("stop_review_level")
+        rs = d.get("rs_vs_spy")
+        L, i, n = rank.get(t, ("unmapped", 1, 1))
+        tier = pct_hi if (rs is not None and rs >= hi_rs) else pct_base
+        risk_usd = d.get("risk_usd")
+        target = None
+        if px and stop and px > stop:
+            per_pct = (px - stop) / px
+            target = min(net_liq * tier / 100.0 / per_pct, hard_cap_usd)
+            cap_usd = (caps.get(t) or {}).get("cap_usd")
+            if cap_usd:
+                target = min(target, cap_usd)
+            # SAFETY (smoke-test finding 2026-08-23): a stop sitting 1-4% away yields a huge
+            # risk-derived size. That is arithmetically true but reads as 'you may add' -- and a
+            # name whose stop is about to trigger is the last one to size UP. This table answers
+            # 'cut how much', never 'buy how much'; adding is governed by the action plan alone.
+            target = min(target, mv or target)
+        cut = max((mv or 0) - target, 0) if target is not None else None
+        tot_risk += risk_usd or 0
+        tot_cut += cut or 0
+        rows.append({"ticker": t, "layer": L, "rank": "%d/%d" % (i, n),
+                     "near_stop": bool(d.get("dist_to_stop_pct") is not None and d["dist_to_stop_pct"] < 5),
+                     "weakest": bool(n >= 2 and i == n), "mv": mv, "pct_nav": d.get("pct_of_net_liq"),
+                     "rs": rs, "stop": stop, "stop_basis": d.get("stop_basis"),
+                     "dist_pct": d.get("dist_to_stop_pct"), "risk_usd": risk_usd,
+                     "risk_pct_nav": round((risk_usd or 0) / net_liq * 100, 2) if net_liq else None,
+                     "tier_pct": tier, "target_usd": round(target) if target else None,
+                     "cut_usd": round(cut) if cut else None,
+                     "below_200dma": d.get("below_200dma")})
+    return rows, {"total_risk_usd": round(tot_risk), "total_cut_usd": round(tot_cut),
+                  "total_risk_pct_nav": round(tot_risk / net_liq * 100, 1) if net_liq else None}
+
+def _audit_md(rows, tot, budget_hi=8.0):
+    """B48 rendering. Code-rendered, never handed to the LLM (B22 lesson)."""
+    if not rows:
+        return ""
+    L = ["## 🩺 持仓体检（B48 · 规则直出 · 止损=20日低×0.99）", "",
+         "| 票 | 层(排名) | 现仓$ | 净值% | RS | 止损价 | 距止损% | 在险$ | 在险%净值 | 风险档 | 目标仓位$ | 该减$ |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        flags = ("🔻" if r["weakest"] else "") + ("📉" if r["below_200dma"] else "") + ("🚨" if r.get("near_stop") else "")
+        L.append("| %s%s | %s(%s) | %s | %s | %s | %s | %s | %s | %s%% | %.0f%% | %s | %s |" % (
+            r["ticker"], flags, r["layer"], r["rank"],
+            format(int(r["mv"] or 0), ","), r["pct_nav"], r["rs"],
+            r["stop"] if r["stop"] else "-", r["dist_pct"],
+            format(int(r["risk_usd"]), ",") if r["risk_usd"] else "-",
+            r["risk_pct_nav"], r["tier_pct"],
+            format(int(r["target_usd"]), ",") if r["target_usd"] else "-",
+            ("**" + format(int(r["cut_usd"]), ",") + "**") if r["cut_usd"] else "—"))
+    flag = "🔴" if (tot["total_risk_pct_nav"] or 0) > budget_hi else "🟢"
+    L += ["", "%s **组合总在险 $%s = 净值 %.1f%%**（预算 6-8%%）｜ 按风险档该减仓合计 **$%s**" % (
+        flag, format(tot["total_risk_usd"], ","), tot["total_risk_pct_nav"] or 0,
+        format(tot["total_cut_usd"], ",")),
+        "> 🔻=本层 RS 最弱（同层重复持有时优先处理）｜📉=跌破200日线（趋势旗标，与执行止损分开）｜🚨=距止损<5%（即将触发）",
+        "> ⚠️ **在险$ 小 ≠ 安全**：止损近在咫尺同样让在险金额变小（见 🚨 行）。两者要一起读。",
+        "> 本表只回答「该减多少」，**从不建议加仓**（目标仓位以现仓为上限）；买入一律走行动清单的等待价+闸门。",
+        "> 目标仓位 = min(按风险档反推, vol×corr 上限, $30k 硬顶)。风险档：RS≥%s 用 2%%，其余 1%%。" % (
+            (CFG.get("risk", {}) or {}).get("high_conviction_rs", 20)),
+        "> **止损位不是问题，仓位才是**：能扛住波动的止损必然离得远，仓位不缩就必然超预算。", ""]
+    return "\n".join(L) + "\n---\n\n"
+
+def _dispose_order(rows, snapshot, cash):
+    """B48b sell sequencing: order by REASON HARDNESS (not by size), then project the cash ladder
+    so 'what do I sell first and where does the money go' has one answer, not a paragraph."""
+    def hardness(r):
+        if r["layer"] == "unmapped":       return (1, "体系外/无框架容纳")
+        if r["weakest"] and (r["rs"] or 0) < 0:  return (2, "本层最弱且 RS 为负")
+        if r["below_200dma"]:              return (3, "跌破200日线（趋势失效）")
+        if r["weakest"]:                   return (4, "本层最弱")
+        if r["cut_usd"]:                   return (5, "超出风险档尺寸")
+        return (9, "")
+    cand = [(hardness(r), r) for r in rows if hardness(r)[0] <= 5 and (r["cut_usd"] or r["layer"] == "unmapped")]
+    if not cand:
+        return ""
+    cand.sort(key=lambda x: (x[0][0], -(x[1]["cut_usd"] or x[1]["mv"] or 0)))
+    L = ["## 🪜 处置排序与现金推演（B48b · 按理由硬度，不按金额）", ""]
+    run = cash or 0.0
+    for i, ((_h, why), r) in enumerate(cand[:8], 1):
+        amt = r["mv"] if r["layer"] == "unmapped" else (r["cut_usd"] or 0)
+        run += amt
+        note = "清仓" if r["layer"] == "unmapped" else "减仓"
+        L.append("%d. **%s %s $%s** —— %s ｜ 执行后现金 $%s%s" % (
+            i, r["ticker"], note, format(int(amt), ","), why, format(int(run), ","),
+            "  ← **现金转正，利息停止**" if (run >= 0 and run - amt < 0) else ""))
+    L += ["", "> 顺序原则：理由越硬越先做（体系外 > 层内最弱且RS负 > 趋势失效 > 层内最弱 > 超尺寸）；"
+          "同级按金额降序。所得按 B46 优先级：还保证金 → 热度回预算 → 等待价分批 → 弹药。", ""]
+    return "\n".join(L) + "\n---\n\n"
 
 def _lamps_md(heat_pct, cash, earn):
     """B42 status lamps: heat / cash-margin / earnings window. One glance, code-rendered."""
@@ -491,7 +618,8 @@ def build() -> str:
               for t in holdings if t in quotes}
     dilution = {t: fmp.shares_growth(t) for t in holdings}
     dil_on = CFG.get("risk", {}).get("dilution_atm_disqualifier", True)
-    holdings_snapshot = _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dil_on)
+    holdings_snapshot = _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dil_on,
+                                           closes=closes)          # B48: 20-day-low stops
     heat_usd = sum((d["market_value"] or 0) * (d["dist_to_stop_pct"] or 0) / 100.0
                    for d in holdings_snapshot.values())
     portfolio_heat_pct = round(heat_usd / net_liq * 100, 1) if net_liq else None
@@ -529,6 +657,7 @@ def build() -> str:
                                  "trim_usd": round(d["market_value"] * pt_frac),
                                  "low10": round(min(lows), 2) if lows else None})
     reentries = _reentry_update(closed, quotes, today, net_liq, maxpos_pct)            # B44
+    audit_rows, audit_tot = _position_audit(holdings_snapshot, caps, net_liq, theme_of, hard_cap_usd)  # B48
     action_md = _action_plan(holdings_snapshot, caps, portfolio_heat_pct, candidates, cash, hard_cap_usd,
                              violations=violations, mkt=mkt, theme_alerts=theme_alerts,
                              profit_takes=profit_takes, reentries=reentries)
@@ -544,7 +673,8 @@ def build() -> str:
                   broken_down_holdings=broken, closed_positions=closed, opened_positions=opened,
                   discipline_violations=violations, exceptions=exc_plain,
                   theme_exposure_alerts=theme_alerts, profit_take_prompts=profit_takes,
-                  reentry_prompts=reentries,
+                  reentry_prompts=reentries, position_audit_totals=audit_tot,
+                  layer_weakest=[r["ticker"] for r in audit_rows if r["weakest"]],
                   cross_validation=xval, edgar=edgar, news=news, lessons=lessons)
     if phase == "non_trading":
         return "[%s] US market closed; no brief today." % today
@@ -571,7 +701,8 @@ def build() -> str:
                  + "\n\n")
     title = "# 美股投研日报 — %s%s\n\n" % (today, "（盘中快照：未收盘，勿当收盘复盘）" if phase == "intraday" else "")
     lamps = _lamps_md(portfolio_heat_pct, cash, earn)
-    return (header + title + drift + action_md + lamps + exc_md
+    audit_md = _audit_md(audit_rows, audit_tot) + _dispose_order(audit_rows, holdings_snapshot, cash)
+    return (header + title + drift + action_md + lamps + audit_md + exc_md
             + "## 📰 消息与点评（LLM 附录）\n\n" + body + "\n\n---\n\n"
             + _snapshot_md(holdings_snapshot, net_liq, cash)
             + _candidates_md(candidates, subs)
