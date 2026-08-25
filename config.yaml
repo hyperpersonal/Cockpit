@@ -18,7 +18,7 @@ holdings:                          # 角色注释 + IBKR 掉线兜底（B33 起�
   - { ticker: AAOI, role: "光模块（稀释旗标：流通股YoY+35.6%，424B5x3）" }
   - { ticker: GLW,  role: "光通信玻璃（曾破止损参考位）" }
   - { ticker: SOXX, role: "半导体ETF（与单股持仓高度重复，处置方案第一批候选）" }
-  - { ticker: CCXI, role: "Churchill Capital XI（SPAC空壳，体系外；两次亏损摊平 L18）" }
+  - { ticker: CCXI, role: "Churchill Capital XI → **Agility Robotics** 人形机器人/Physical AI 的 de-SPAC（2026-06-24 签定最终合并协议，$2.5B 估值；2026-07-14 保密提交 S-4；Digit 已部署于 Amazon/Toyota/GXO）。⚠️ 2026-08-25 更正：此前注释写「SPAC空壳，体系外」是错的，且该错误曾把它推上处置清单第一位。合并未交割前仍是 SPAC 载体（FMP 行业仍标 Shell Companies），交割风险自负；两次亏损摊平 L18 留痕不变。" }
   - { ticker: RAM,  role: "2x杠杆ETF(Roundhill T-REX 2X Long DRAM)——红线v2窄门内合规(≈3.4%净值)；趋势工具：硬止损−15%/20日低，禁亏损加仓，负现金期间禁补仓" }
 exclude: [IBKR]                    # 吉祥物，不计入分析
 
@@ -57,7 +57,9 @@ risk:                              # 移植 ai-hedge-fund risk_manager
     KLAC: adv_packaging      # 量测/检测设备（L7「检测」环节；前道设备层待单列）
     ASX:  adv_packaging      # OSAT 封测
     GLW:  optical_cpo        # 光通信玻璃
-    CCXI: outside_framework  # Churchill Capital XI = SPAC 空壳，真·体系外（唯一一只）
+    CCXI: physical_ai       # B54 更正：不是空壳，是 Agility Robotics（人形机器人）的 de-SPAC。
+                             # 不放进 subthemes.names —— 单成员层会让雷达的板块强弱表出一行无意义数据；
+                             # theme_overrides 只影响 _layer_of / _theme_exposure，正是为此存在。
   leverage_factors: { RAM: 2.0 }             # 杠杆产品按基础敞口倍数计入主题敞口（红线v2⑥）
   profit_take_trigger_pct: 25                # B45 止盈触发：浮盈≥此值 提示减仓/上移止损
   profit_take_fraction: 0.33                 # B45 止盈建议减仓比例
