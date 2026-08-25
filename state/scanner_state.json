@@ -528,7 +528,7 @@
   "BBWI": "Specialty Retail"
  },
  "universe_date": "2026-08-24",
- "cursor": 250,
+ "cursor": 500,
  "hits": {
   "ABNB": {
    "first_seen": "2026-08-24",
@@ -633,7 +633,114 @@
    "rs": 41.1,
    "industry": "Medical - Diagnostics & Research",
    "price": 219.1076
+  },
+  "IQV": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -1.0,
+   "rs": 21.6,
+   "industry": "Medical - Diagnostics & Research",
+   "price": 259.17
+  },
+  "MANH": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -3.9,
+   "rs": 27.4,
+   "industry": "Software - Application",
+   "price": 211.64
+  },
+  "MPC": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -2.0,
+   "rs": 46.1,
+   "industry": "Oil & Gas Refining & Marketing",
+   "price": 360.24
+  },
+  "MRK": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -0.1,
+   "rs": 25.8,
+   "industry": "Drug Manufacturers - General",
+   "price": 154.865
+  },
+  "NTRA": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -1.1,
+   "rs": 36.4,
+   "industry": "Medical - Diagnostics & Research",
+   "price": 332.2876
+  },
+  "PSX": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -2.6,
+   "rs": 35.6,
+   "industry": "Oil & Gas Refining & Marketing",
+   "price": 240.625
+  },
+  "RGEN": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -3.4,
+   "rs": 21.4,
+   "industry": "Medical - Instruments & Supplies",
+   "price": 182.3403
+  },
+  "RHI": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -4.9,
+   "rs": 42.3,
+   "industry": "Staffing & Employment Services",
+   "price": 44.405
+  },
+  "ROKU": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -0.6,
+   "rs": 29.4,
+   "industry": "Entertainment",
+   "price": 158.879
+  },
+  "RPRX": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -0.1,
+   "rs": 20.8,
+   "industry": "Medical - Pharmaceuticals",
+   "price": 62.115
+  },
+  "RVMD": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -4.1,
+   "rs": 57.8,
+   "industry": "Biotechnology",
+   "price": 211.415
+  },
+  "SN": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -3.8,
+   "rs": 40.2,
+   "industry": "Furnishings, Fixtures & Appliances",
+   "price": 183.9
+  },
+  "SSRM": {
+   "first_seen": "2026-08-25",
+   "last_seen": "2026-08-25",
+   "off_high": -0.4,
+   "rs": 34.7,
+   "industry": "Gold",
+   "price": 39.0536
   }
  },
- "cluster_first_seen": {}
+ "cluster_first_seen": {
+  "Medical - Diagnostics & Research": "2026-08-25",
+  "Oil & Gas Refining & Marketing": "2026-08-25"
+ }
 }
