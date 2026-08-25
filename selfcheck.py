@@ -4,7 +4,9 @@ Run before claiming 'done'; optional CI step. Pure stdlib.
 Checks: (1) all modules compile, (2) behavioral config keys are used, (3) biweekly has parity with
 daily (holdings_snapshot + position_caps), (4) surface TODOs, (5) flag UNEXPECTED dead config keys
 (informational/constitution keys are allowlisted), (6) BACKLOG hygiene (no row both OPEN and DONE),
-(7) done-manifest (every DONE claim must have a real code/doc fingerprint). Exit nonzero on hard fail."""
+(7) done-manifest (every DONE claim must have a real code/doc fingerprint),
+(8) every held ticker resolves to a layer (B53 -- an unmapped holding silently disables B36/B48).
+Exit nonzero on hard fail."""
 import ast, glob, re, sys, pathlib, yaml
 ROOT = pathlib.Path(__file__).resolve().parent
 SRC = {p: open(p, encoding="utf-8").read() for p in glob.glob(str(ROOT / "cockpit" / "*.py"))}
@@ -108,6 +110,20 @@ for bid, (relpath, needle) in DONE_FINGERPRINTS.items():
     if needle not in txt:
         fail.append(f"BACKLOG {bid} marked DONE but fingerprint '{needle}' MISSING in {relpath} "
                     f"(DONE claim not backed by code)")
+
+# (8) B53: every held ticker must resolve to a LAYER (subthemes.names or risk.theme_overrides).
+# An unmapped holding is silent: B36 exempts "unmapped" from theme alerts, and B48's layer ranking
+# lumps everything unmapped into one pseudo-layer. On 2026-08-24 SKHY (31% of NAV) was unmapped, so
+# the memory layer read 31% instead of 63% and no alert ever fired. Mechanical guard, not a habit.
+_mapped = set()
+for _v in (cfg.get("subthemes") or {}).values():
+    _mapped |= set((_v or {}).get("names") or [])
+_mapped |= set(((cfg.get("risk") or {}).get("theme_overrides") or {}).keys())
+_held = {h.get("ticker") for h in (cfg.get("holdings") or []) if isinstance(h, dict)}
+_unmapped = sorted(t for t in (_held - set(cfg.get("exclude") or [])) if t and t not in _mapped)
+if _unmapped:
+    fail.append("holdings with NO subtheme/theme_override mapping (silently breaks B36 theme alerts "
+                "and B48 layer ranking): " + ", ".join(_unmapped))
 
 print("=== Cockpit self-check ===")
 for w in warn: print("  WARN:", w)

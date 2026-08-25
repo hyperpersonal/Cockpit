@@ -47,7 +47,17 @@ risk:                              # 移植 ai-hedge-fund risk_manager
   no_chase_bias_threshold_pct: 5.0            # ZhuLinsen 默认；强趋势放宽 1.5x
   dilution_atm_disqualifier: true            # Serenity #7（需人工/SEC 复核）
   theme_exposure_alert_pct: 40               # B36 主题聚合敞口警戒线%（含杠杆倍数折算）
-  theme_overrides: { RAM: memory_hbm }       # 地图外持仓的主题归属（供 B36 敞口合并）
+  # B53 (2026-08-24): 地图外持仓的层归属。缺这几行会让 _layer_of/_theme_exposure 把它们打成
+  # "unmapped"——B36 显式豁免 unmapped 故主题警戒永不触发，而 _dispose_order 把 unmapped 读成
+  # 「体系外/无框架容纳」并给出整只清仓建议。SKHY(第一大仓)一度因此被排在清仓第一位。
+  theme_overrides:
+    RAM:  memory_hbm         # 2x DRAM ETF（按 leverage_factors 折 2x 计入）
+    SKHY: memory_hbm         # SK hynix ADR：内存双雄之一，subthemes 里只有 MU/SNDK/SIMO
+    SOXX: semis_gpu_asic     # ETF 只在 subthemes.etfs 里，_theme_of 只读 names
+    KLAC: adv_packaging      # 量测/检测设备（L7「检测」环节；前道设备层待单列）
+    ASX:  adv_packaging      # OSAT 封测
+    GLW:  optical_cpo        # 光通信玻璃
+    CCXI: outside_framework  # Churchill Capital XI = SPAC 空壳，真·体系外（唯一一只）
   leverage_factors: { RAM: 2.0 }             # 杠杆产品按基础敞口倍数计入主题敞口（红线v2⑥）
   profit_take_trigger_pct: 25                # B45 止盈触发：浮盈≥此值 提示减仓/上移止损
   profit_take_fraction: 0.33                 # B45 止盈建议减仓比例

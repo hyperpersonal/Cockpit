@@ -282,7 +282,13 @@ def _reentry_update(closed, quotes, today, net_liq, maxpos_pct):
         pass
     return prompts
 
+OUTSIDE_LAYER = "outside_framework"   # B53: the ONLY value meaning "really outside the framework"
+
 def _layer_of(t, theme_of):
+    """B53: 'unmapped' means THE CONFIG IS MISSING A MAPPING -- a data gap, NOT a verdict on the
+    holding. Say 'no framework holds this' with OUTSIDE_LAYER (risk.theme_overrides ->
+    outside_framework). Conflating the two once put SKHY, the largest position, at the top of a
+    liquidation list labelled 体系外."""
     rk = CFG.get("risk", {}) or {}
     return (rk.get("theme_overrides", {}) or {}).get(t) or theme_of.get(t) or "unmapped"
 
@@ -373,26 +379,40 @@ def _dispose_order(rows, snapshot, cash):
     """B48b sell sequencing: order by REASON HARDNESS (not by size), then project the cash ladder
     so 'what do I sell first and where does the money go' has one answer, not a paragraph."""
     def hardness(r):
-        if r["layer"] == "unmapped":       return (1, "体系外/无框架容纳")
+        if r["layer"] == OUTSIDE_LAYER:    return (1, "体系外/无框架容纳")
         if r["weakest"] and (r["rs"] or 0) < 0:  return (2, "本层最弱且 RS 为负")
         if r["below_200dma"]:              return (3, "跌破200日线（趋势失效）")
         if r["weakest"]:                   return (4, "本层最弱")
         if r["cut_usd"]:                   return (5, "超出风险档尺寸")
         return (9, "")
-    cand = [(hardness(r), r) for r in rows if hardness(r)[0] <= 5 and (r["cut_usd"] or r["layer"] == "unmapped")]
+
+    def amount(h, r):
+        """B53: hardness 1-2 (outside the framework / weakest in its layer with negative RS) = EXIT
+        the whole position; 3-5 = only cut down to size. The old filter keyed on cut_usd, so a name
+        already small enough but carrying the HARDEST reason (CCXI the SPAC shell; AVGO/GLW/RAM
+        weakest in their layer) never reached the ladder at all. Caught by smoke test 2026-08-24."""
+        return (r["mv"] or 0) if h <= 2 else (r["cut_usd"] or 0)
+
+    cand = [(hardness(r), r) for r in rows if hardness(r)[0] <= 5 and amount(hardness(r)[0], r) > 0]
     if not cand:
         return ""
-    cand.sort(key=lambda x: (x[0][0], -(x[1]["cut_usd"] or x[1]["mv"] or 0)))
+    cand.sort(key=lambda x: (x[0][0], -amount(x[0][0], x[1])))
     L = ["## 🪜 处置排序与现金推演（B48b · 按理由硬度，不按金额）", ""]
     run = cash or 0.0
     for i, ((_h, why), r) in enumerate(cand[:8], 1):
-        amt = r["mv"] if r["layer"] == "unmapped" else (r["cut_usd"] or 0)
+        amt = amount(_h, r)
         run += amt
-        note = "清仓" if r["layer"] == "unmapped" else "减仓"
+        note = "清仓" if _h <= 2 else "减仓"
         L.append("%d. **%s %s $%s** —— %s ｜ 执行后现金 $%s%s" % (
             i, r["ticker"], note, format(int(amt), ","), why, format(int(run), ","),
             "  ← **现金转正，利息停止**" if (run >= 0 and run - amt < 0) else ""))
+    ump = [r["ticker"] for r in rows if r["layer"] == "unmapped"]
+    if ump:
+        L += ["", "> ⚠️ **未归类持仓（config.subthemes / risk.theme_overrides 缺失）**："
+              + ", ".join(ump) + " —— 它们的层内排名与 B36 主题敞口都失效。"
+              "**请补 config；「未归类」不等于「体系外」。**"]
     L += ["", "> 顺序原则：理由越硬越先做（体系外 > 层内最弱且RS负 > 趋势失效 > 层内最弱 > 超尺寸）；"
+          "硬度 1-2 给整只清仓金额，3-5 只给该减金额；"
           "同级按金额降序。所得按 B46 优先级：还保证金 → 热度回预算 → 等待价分批 → 弹药。", ""]
     return "\n".join(L) + "\n---\n\n"
 
