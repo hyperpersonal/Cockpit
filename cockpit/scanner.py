@@ -164,12 +164,31 @@ def daily_scan(bench_vs200: float) -> str:
                  uni_n, float(SC.get("min_mcap_usd", 2000000000)) / 1e9, float(SC.get("min_price", 10)),
                  float(SC.get("min_dollar_vol_usd", 50000000)) / 1e6,
                  int(SC.get("universe_refresh_days", 7)), scanned, hit_n)]
+        # B55 (2026-08-27): the section used to report only a HIT COUNT. On a no-cluster day the
+        # user got "命中 26 票" and not one ticker -- the actionable half was in state, never rendered.
+        hits = st.get("hits") or {}
+        fresh = sorted([(t, h) for t, h in hits.items() if str(h.get("first_seen") or "") == today],
+                       key=lambda kv: -(kv[1].get("rs") or 0))
+        fresh_md = []
+        if fresh:
+            fresh_md = ["", "**本日新增命中 %d 只**（按 RS 排序；新增≠成簇，更≠买入）：" % len(fresh), "",
+                        "| 票 | 行业 | RS | 距高% |", "|---|---|---|---|"]
+            for tk, h in fresh[:8]:
+                fresh_md.append("| %s | %s | %+.1f | %.1f |" % (
+                    tk, h.get("industry") or "-", float(h.get("rs") or 0), float(h.get("off_high") or 0)))
+            if len(fresh) > 8:
+                fresh_md += ["", "> 另有 %d 只新增未列出（只取 RS 前 8）。" % (len(fresh) - 8)]
+        carried = len(hits) - len(fresh)
+        if carried > 0:
+            fresh_md += ["", "> 命中池另有 %d 只为往日留存（未在此列出）。" % carried]
+
         if uni_n == 0:
             L.append("")
             L.append("> ⚠️ 宇宙为空（screener 数据缺口或首跑未成功）——fail-open，明日重试。")
         elif not clusters:
             L.append("")
             L.append("今日无「同业 ≥%d 只贴近新高」的地图外聚类。" % int(SC.get("cluster_min_names", 3)))
+            L += fresh_md
         else:
             L += ["", "| 行业簇 | 家数 | 最强代表（距高%/RS） | 持续天数 | 业绩同向(B41) | 建议 |",
                   "|---|---|---|---|---|---|"]
@@ -180,6 +199,8 @@ def daily_scan(bench_vs200: float) -> str:
                 sug = "已持续≥%d天：建议将该行业加入 config.subthemes" % int(SC.get("cluster_suggest_days", 5)) \
                       if c["suggest"] else "继续观察"
                 L.append("| %s | %d | %s | %d | %s | %s |" % (c["industry"], c["n"], reps, c["days"], gr, sug))
+            L.append("")
+            L += fresh_md
             L.append("")
             L.append("> 发现≠追高（B28 铁律）：簇内个股仍须过雷达 posture/等待价 + Serenity14/稀释核查，按 1% 风险入场；扫描器只负责「看见」。")
         return "\n".join(L) + "\n"

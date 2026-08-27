@@ -118,8 +118,16 @@ def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, d
         hist = (closes or {}).get(t) or []                       # B48: FMP light rows are NEWEST-first
         low20 = min(hist[:20]) if len(hist) >= 5 else None
         if low20 and price:
-            stop_level = round(low20 * 0.99, 2)
-            already_broken = price <= stop_level                 # today printed a new 20-day low
+            stop_level = round(low20 * 0.99, 2)                  # the level to PLACE a GTC stop at
+            # B58 (2026-08-27): the BREACH test must use the stop a GTC order would ALREADY be
+            # sitting at -- i.e. derived from the PRIOR 20 closes. Testing today's price against a
+            # window that CONTAINS today's price is unsatisfiable: min <= price always, so
+            # `price <= min*0.99` can never be true. `already_broken_down` was therefore DEAD from
+            # B48 (2026-08-23) until this fix, and with it every downstream 破位 signal
+            # (exception list, action plan, snapshot label, B29 signal history).
+            # B51's replay measured it: 82 real breaches across 11 holdings in one year, 0 detected.
+            prior20 = min(hist[1:21]) if len(hist) >= 6 else low20
+            already_broken = price <= round(prior20 * 0.99, 2)
         else:                                                    # fail-open: pre-B48 rule
             cand_levels = [x for x in [a200, (avg * 0.8 if avg else None)] if x]
             below = [L for L in cand_levels if price and price > L]

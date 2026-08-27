@@ -77,7 +77,11 @@ data:
   news_max_age_days: 3
 
 schedule:
-  daily_brief_cron_utc: "23 16 * * 1-5"  # 中国周二–周六 00:23（避整点拥堵） = 美股周一–周五盘中
+  daily_brief_cron_utc: "30 22 * * 1-5"  # B57 (2026-08-27) 盘中→盘后：22:30 UTC = 夏令时收盘+150分/冬令时收盘+90分，
+                                         # 一个设置覆盖冬夏令时；台北固定 UTC+8 → 次日约 07:00 收到。
+                                         # 收盘价口径下 20日低/止损位/距止损%/RS/热度才成立（此前顶部一直挂着「盘中快照，勿当收盘复盘」）。
+                                         # calendars.market_phase 已有 postmarket 分支，代码无需改动。
+                                         # ⚠️ 真正生效的 cron 在 .github/workflows/daily-brief.yml（设备写保护，须在 github.com 手改）
   biweekly_review_cron_utc: "23 2 * * 6" # 中国周六 10:23（避整点拥堵）；脚本内判隔周
   biweekly_anchor_date: "2026-06-27"     # 双周锚点（其后每14天）
   skip_us_holidays: true                 # exchange-calendars XNYS
