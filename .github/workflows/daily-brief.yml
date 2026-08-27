@@ -1,7 +1,7 @@
 name: 每日简报 Daily Brief
 on:
   schedule:
-    - cron: "23 16 * * 1-5"  # UTC 16:23 = 中国周二–周六 00:23（避开整点拥堵，减少 GHA 排队延迟）。脚本再按美股节假日跳过。
+        - cron: "30 22 * * 1-5"  # UTC 22:30 = 美股盘后（夏+150分/冬+90分）；台北次日约 07:00
   workflow_dispatch:
     inputs:
       force_run: { description: "非交易日也跑", type: boolean, default: false }
