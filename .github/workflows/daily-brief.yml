@@ -30,6 +30,7 @@ jobs:
           FORCE_RUN: ${{ inputs.force_run }}
         run: python -m cockpit.daily_brief
       - name: Persist state (nav/last-positions/memory)   # B27: rebase-retry like intraday, so pushes never silently die
+        if: always()
         run: |
           git config user.name "cockpit-bot"; git config user.email "bot@users.noreply.github.com"
           git add state/ && git commit -m "state update $(date -u +%F)" || { echo "no changes"; exit 0; }
