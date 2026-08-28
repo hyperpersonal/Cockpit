@@ -5,7 +5,7 @@ reflection lesson (B5) -> FMP universe quotes/news(age-filtered)/earnings -> sub
 per-holding REAL stop + portfolio heat -> append NAV history -> Claude (sections 1-8) -> CODE-render
 the 选股雷达 candidate table + as-of label and append (so it's NEVER dropped by the LLM). Chinese."""
 from __future__ import annotations
-import os, json, datetime as dt, pathlib, yaml
+import os, sys, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, scanner, crossval, llm, notify, calendars
 from .memory import ReflectionMemory
 
@@ -824,8 +824,19 @@ def main():
         body = build()
     except Exception as e:
         body = "system degraded: daily brief error (%s). check data/config." % e
-    notify.send("daily brief %s" % dt.date.today().isoformat(), body)
+    ok = notify.send("daily brief %s" % dt.date.today().isoformat(), body)
     print(body)
+    # B59 (2026-08-28): a failed send used to be SILENT. notify.send() catches every exception and
+    # returns False; both mains discarded the return value, so the job stayed green and the email
+    # just never arrived. Real incident: the Google account password was changed 2026-08-26 16:20 UTC,
+    # which revokes all app passwords, so EMAIL_PASSWORD in GitHub Secrets went stale. The 08-26 run
+    # went green, pushed state, and sent nothing -- and nothing anywhere said so.
+    # Exiting non-zero turns it into a RED run, and GitHub's own failure notification does not depend
+    # on this Gmail app password, so the alarm still gets through.
+    if not ok:
+        print("EMAIL SEND FAILED -- check EMAIL_PASSWORD (a Google password change revokes app passwords)")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
