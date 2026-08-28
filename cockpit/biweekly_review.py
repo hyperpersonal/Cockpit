@@ -8,7 +8,8 @@ import os, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, llm, notify, calendars
 from .memory import ReflectionMemory
 from .daily_brief import (_theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md,
-                          _corr_universe, _theme_exposure, _position_audit, _audit_md)
+                          _corr_universe, _theme_exposure, _position_audit, _audit_md,
+                          _exit_tracking, _exit_track_md)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -49,6 +50,123 @@ def _performance(net_liq_now, bench, today) -> dict:
             "benchmark_return_pct": spy_ret,
             "alpha_pct": round(port_ret - spy_ret, 2) if spy_ret is not None else None,
             "note": "approx period net-liq return (not deposit-adjusted); SPY price return same window"}
+
+def _attribution(window_days: int = 14) -> dict | None:
+    """B49 performance attribution from state/signal_history.json.
+
+    Why not just NAV: `_performance()` reports the raw NAV change, which is polluted by deposits,
+    withdrawals and margin interest -- the 2026-08-22 review printed +8.03% with no adjustment and
+    the user still could not answer 「我到底靠什么赚/亏的」.
+
+    signal_history stores, per day, net_liq plus every holding's {shares, price}. That is enough to
+    separate MARKET P&L from EXTERNAL CASH FLOW without any Flex cash-flow query:
+        market P&L(t)  = SUM_i shares_i(t-1) * (px_i(t) - px_i(t-1))      <- what the market did
+        residual(t)    = NAV(t) - NAV(t-1) - market P&L(t)                <- deposits / interest / fees
+    Trades do not move NAV (ex-commission), so they fall out of both terms; they show up in the
+    timing bucket instead.
+
+    Three buckets over the window (each answers a different question):
+        选股 = equal-weight return of the names held   -> were these the right names?
+        尺寸 = actual-weight return - equal-weight      -> was the weighting right?
+        择时 = actual P&L - P&L if day-1 shares never changed -> did the adds/trims help?
+
+    HONEST LIMITS, carried into the rendered output:
+      - the window starts 2026-07-20 (when signal_history began); this is NOT since-inception
+      - prices are the daily brief's snapshot price. Until B57 moved the brief post-close those were
+        INTRADAY snapshots, so early days carry intraday noise
+      - commissions and slippage are not visible here
+      - `residual` lumps external flows together with interest and fees; it is not a clean flow figure
+    Fail-open: returns None if there is not enough history."""
+    try:
+        raw = json.load(open(ROOT / "state" / "signal_history.json", encoding="utf-8")).get("days") or []
+    except Exception:
+        return None
+    days = [d for d in raw if d.get("net_liq") and d.get("holdings")]
+    if len(days) < 3:
+        return None
+    days = days[-(window_days + 1):] if window_days else days
+    first, last = days[0], days[-1]
+
+    mkt_total = 0.0; resid_total = 0.0; twr = 1.0
+    per = {}
+    for a, b in zip(days, days[1:]):
+        ha, hb = a["holdings"], b["holdings"]
+        day_mkt = 0.0
+        for t, va in ha.items():
+            vb = hb.get(t)
+            if not vb: continue
+            sh, pa, pb = va.get("shares"), va.get("price"), vb.get("price")
+            if sh is None or pa is None or pb is None: continue
+            c = sh * (pb - pa)
+            day_mkt += c
+            per[t] = per.get(t, 0.0) + c
+        nav_a, nav_b = a["net_liq"], b["net_liq"]
+        mkt_total += day_mkt
+        resid_total += (nav_b - nav_a) - day_mkt
+        if nav_a:
+            twr *= (1 + day_mkt / nav_a)
+
+    # 择时：把首日股数冻结，重算同一段行情
+    frozen = {}
+    for a, b in zip(days, days[1:]):
+        ha, hb = a["holdings"], b["holdings"]
+        for t, va in ha.items():
+            vb = hb.get(t); v0 = first["holdings"].get(t)
+            if not vb or not v0: continue
+            pa, pb, sh0 = va.get("price"), vb.get("price"), v0.get("shares")
+            if pa is None or pb is None or sh0 is None: continue
+            frozen[t] = frozen.get(t, 0.0) + sh0 * (pb - pa)
+
+    # 选股 / 尺寸：窗口内价格收益 + 平均权重
+    names, rets, wts = [], [], []
+    for t, v0 in first["holdings"].items():
+        vN = last["holdings"].get(t)
+        if not vN: continue
+        p0, pN = v0.get("price"), vN.get("price")
+        if not p0 or not pN: continue
+        w = []
+        for d in days:
+            h = d["holdings"].get(t)
+            if h and h.get("shares") and h.get("price") and d.get("net_liq"):
+                w.append(h["shares"] * h["price"] / d["net_liq"])
+        if not w: continue
+        names.append(t); rets.append(pN / p0 - 1); wts.append(sum(w) / len(w))
+    eq = sum(rets) / len(rets) if rets else 0.0
+    wtd = sum(w * r for w, r in zip(wts, rets))
+    return {"d0": first.get("date"), "dN": last.get("date"), "n_days": len(days),
+            "nav0": first["net_liq"], "navN": last["net_liq"],
+            "mkt_pnl": mkt_total, "residual": resid_total,
+            "twr_pct": (twr - 1) * 100, "raw_nav_pct": (last["net_liq"] / first["net_liq"] - 1) * 100,
+            "pick_pct": eq * 100, "size_pct": (wtd - eq) * 100,
+            "timing_usd": mkt_total - sum(frozen.values()),
+            "per": sorted(per.items(), key=lambda kv: -abs(kv[1]))}
+
+def _attribution_md(a) -> str:
+    """B49 rendering. Code-rendered, never handed to the LLM (B22 lesson)."""
+    if not a:
+        return ""
+    L = ["## 🧮 业绩归因（B49 · 规则直出 · %s → %s，%d 个交易日）" % (a["d0"], a["dN"], a["n_days"]), "",
+         "| 口径 | 数值 | 它回答什么 |", "|---|---|---|",
+         "| 净值变动（未调整） | %+.2f%% | 旧口径，**被出入金污染，不可直接当业绩** |" % a["raw_nav_pct"],
+         "| **TWR（剔除出入金）** | **%+.2f%%** | 你的**投资**表现 |" % a["twr_pct"],
+         "| 市场盈亏 | $%s | 持仓本身赚/亏的钱 |" % format(a["mkt_pnl"], "+,.0f"),
+         "| 残差（出入金/利息/费用） | $%s | 不是投资结果，是钱进出与融资成本 |" % format(a["residual"], "+,.0f"),
+         "", "**三分归因**", "",
+         "| 来源 | 贡献 | 读法 |", "|---|---|---|",
+         "| 选股（等权持有这批票） | %+.2f%% | 这批**票**本身怎么样 |" % a["pick_pct"],
+         "| 尺寸（实际权重 − 等权） | %+.2f%% | 你的**权重分配**赚了还是亏了 |" % a["size_pct"],
+         "| 择时（实际 − 首日股数不动） | $%s | 期间的**加减仓**帮了还是害了 |" % format(a["timing_usd"], "+,.0f"),
+         ""]
+    top = a["per"][:6]
+    if top:
+        L += ["**贡献最大的持仓（市场盈亏，按绝对值排序）**", "",
+              "| 票 | 贡献$ |", "|---|---|"]
+        L += ["| %s | $%s |" % (t, format(v, "+,.0f")) for t, v in top]
+        L.append("")
+    L += ["> 口径边界：窗口 = signal_history 里**最近的这些交易日**（该台账 2026-07-20 才开始记，故**绝非成立以来**）；",
+          "> 价格取自日报快照，B57（2026-08-27）改盘后之前那些日子是**盘中价**，早期数据带盘中噪音；",
+          "> 不含佣金与滑价；残差把出入金、利息、费用混在一起，**不是干净的现金流数字**。", ""]
+    return "\n".join(L) + "\n---\n\n"
 
 def _adherence_md() -> str:
     """B29 adherence scoreboard, code-rendered (never touches the LLM). Reads
@@ -153,6 +271,7 @@ def build() -> str:
     candidates = screener.rank_candidates(CFG["subthemes"], quotes, bench_vs200,
                                           set(holdings) | exclude, top=12)
     performance = _performance(net_liq if port else None, bench, today)
+    attribution = _attribution()                                          # B49
 
     mem = ReflectionMemory(str(ROOT / "state" / "reflection_memory.json"))
     lessons = mem.retrieve("biweekly review: which holdings lag the leading main-line; rotation; "
@@ -179,7 +298,8 @@ def build() -> str:
               "(7) 待验证. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
               "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:95000])
     body = llm.run(prompt, model=CFG["models"]["biweekly"], max_tokens=4600)
-    return (body + _audit_md(audit_rows, audit_tot)
+    exit_rows = _exit_tracking(quotes)                                    # B50
+    return (body + _attribution_md(attribution) + _exit_track_md(exit_rows) + _audit_md(audit_rows, audit_tot)
             + _adherence_md() + _candidates_md(candidates, subs))   # 体检+记分板+雷达 code-rendered
 
 def main():

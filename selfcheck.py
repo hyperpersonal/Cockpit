@@ -5,7 +5,8 @@ Checks: (1) all modules compile, (2) behavioral config keys are used, (3) biweek
 daily (holdings_snapshot + position_caps), (4) surface TODOs, (5) flag UNEXPECTED dead config keys
 (informational/constitution keys are allowlisted), (6) BACKLOG hygiene (no row both OPEN and DONE),
 (7) done-manifest (every DONE claim must have a real code/doc fingerprint),
-(8) every held ticker resolves to a layer (B53 -- an unmapped holding silently disables B36/B48).
+(8) every held ticker resolves to a layer (B53),
+(9) every holdings[].role carries a verification stamp (B54 -- unverified annotations drive real sell advice).
 Exit nonzero on hard fail."""
 import ast, glob, re, sys, pathlib, yaml
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -124,6 +125,22 @@ _unmapped = sorted(t for t in (_held - set(cfg.get("exclude") or [])) if t and t
 if _unmapped:
     fail.append("holdings with NO subtheme/theme_override mapping (silently breaks B36 theme alerts "
                 "and B48 layer ranking): " + ", ".join(_unmapped))
+
+# (9) B54: every holdings[].role annotation that makes a factual claim about the OUTSIDE WORLD
+# must carry a verification stamp. An unverified annotation ("CCXI = SPAC空壳，体系外") once drove
+# theme_overrides -> B48 disposal ordering and put a real de-SPAC at the top of a liquidation list.
+# A memory rule only binds the agent; this binds every session.
+_bad = []
+for _h in (cfg.get("holdings") or []):
+    if not isinstance(_h, dict): continue
+    _r = str(_h.get("role") or "")
+    if not _r:
+        _bad.append("%s(无 role)" % _h.get("ticker")); continue
+    if ("核实" not in _r) and ("未核实" not in _r):
+        _bad.append(_h.get("ticker"))
+if _bad:
+    fail.append("holdings[].role 缺核实标记（须含「核实 YYYY-MM-DD，源=...」或明写「未核实」）: "
+                + ", ".join(str(x) for x in _bad))
 
 print("=== Cockpit self-check ===")
 for w in warn: print("  WARN:", w)

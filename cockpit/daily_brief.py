@@ -27,6 +27,13 @@ def _universe() -> list:
     for v in CFG.get("subthemes", {}).values():
         syms |= set(v.get("etfs", [])) | set(v.get("names", []))
     syms |= {h["ticker"] for h in CFG.get("holdings", [])}
+    # B50 (2026-08-27): exited names must stay in the quote universe or post-exit tracking silently
+    # drops them. SPCX belongs to no subtheme and is no longer a holding, so without this the one
+    # row B50 most needs (a real exit) would just vanish -- the Rule 6 failure mode again.
+    try:
+        syms |= set(_reentry_load().keys())
+    except Exception:
+        pass
     return sorted(syms)
 
 def _hist_window(tickers, days=None):
@@ -83,6 +90,24 @@ def _reflect_on_closes(positions, exclude, mem, today):
         pnl = round((mv / (sh * av) - 1) * 100, 1) if (mv and sh and av) else None
         cur[t] = {"shares": sh, "avg": av, "pnl_pct": pnl}
     closed = [t for t in prev if t not in cur]
+    # B50 (2026-08-27): a >=90% quantity cut is an EXIT for measurement purposes even though a stub
+    # remains. 2026-08-26 MRVL went 54.741 -> 0.741 shares and was invisible to every exit-side rule:
+    # not "closed", so no postmortem, no re-entry watch, no exit tracking. The system could see the
+    # position shrink and had nothing to say about it.
+    trimmed_out = []
+    for t, pv in prev.items():
+        c = cur.get(t)
+        if not c:
+            continue
+        ps, cs = pv.get("shares"), c.get("shares")
+        if ps and cs is not None and cs <= ps * 0.10:
+            trimmed_out.append(t)
+    if cur and trimmed_out:
+        for t in trimmed_out:
+            mem.add(situation="Near-exit %s: position cut to <=10%% of prior size." % t,
+                    lesson=("%s was reduced by >=90%% but a stub remains. Treat as an exit for review "
+                            "purposes: did the exit follow the thesis, and how did it do afterwards?" % t),
+                    source="auto: near-exit detector (B50)", tags=["postmortem", "exit", "partial", t])
     if cur and closed:
         for t in closed:
             last = (prev.get(t) or {}).get("pnl_pct")
@@ -97,7 +122,7 @@ def _reflect_on_closes(positions, exclude, mem, today):
                   ensure_ascii=False, indent=2)
     except Exception:
         pass
-    return closed, prev
+    return closed, trimmed_out, prev
 def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dilution_on=True, closes=None):
     """B20: market value & P&L use the CURRENT FMP price x IBKR shares (not the stale Flex price).
     B48 (2026-08-23, user decision): the EXECUTION stop is the 20-day closing low x0.99 -- a level
@@ -258,22 +283,31 @@ def _reentry_load():
     except Exception:
         return {}
 
-def _reentry_update(closed, quotes, today, net_liq, maxpos_pct):
+def _reentry_update(closed, quotes, today, net_liq, maxpos_pct, trimmed=None):
     """B44 re-entry watch: every fully-closed position enters a watch list; when it later CLOSES
     back above its 50DMA the action plan proposes a rule-based re-entry with fresh 1%-risk
     sizing. Turns stop-out whipsaw into a bounded, rule-governed round trip (prompt once,
     expire after risk.reentry_watch_days). Fail-open; state committed by the workflow."""
     watch = _reentry_load()
-    days = int(CFG.get("risk", {}).get("reentry_watch_days", 90))
-    for t in closed or []:
+    rk = CFG.get("risk", {}) or {}
+    days = int(rk.get("reentry_watch_days", 90))                 # B44: how long we still PROMPT
+    track_days = int(rk.get("exit_track_days", 365))             # B50: how long we still MEASURE
+    for t in (closed or []):
         if t and t not in watch:
             watch[t] = {"exit_date": today, "exit_price": (quotes.get(t) or {}).get("price"),
-                        "prompted": None}
-    cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+                        "kind": "full", "prompted": None}
+    for t in (trimmed or []):                                    # B50: >=90% cut, stub remains
+        if t and t not in watch:
+            watch[t] = {"exit_date": today, "exit_price": (quotes.get(t) or {}).get("price"),
+                        "kind": "partial", "prompted": "n/a"}    # no re-entry prompt: still holding
+    cutoff = (dt.date.today() - dt.timedelta(days=track_days)).isoformat()
     watch = {t: w for t, w in watch.items() if str(w.get("exit_date") or today) >= cutoff}
+    prompt_cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     prompts = []
     for t, w in watch.items():
-        if w.get("prompted"):
+        if w.get("prompted") or w.get("kind") == "partial":
+            continue
+        if str(w.get("exit_date") or today) < prompt_cutoff:      # past the prompt window, keep measuring
             continue
         q = quotes.get(t) or {}
         px, a50 = q.get("price"), q.get("priceAvg50")
@@ -289,6 +323,53 @@ def _reentry_update(closed, quotes, today, net_liq, maxpos_pct):
     except Exception:
         pass
     return prompts
+
+def _exit_tracking(quotes):
+    """B50 post-exit tracking: measure how every exited name did AFTER we left it.
+
+    The system logged closes (B5) and offered re-entries (B44) but never measured whether the exit
+    itself was right. That is a structurally one-sided book: B29 only prices "ignored a sell signal",
+    never "sold too early", so the system could only ever say 你该卖 and never 你卖早了.
+    Reads the same ledger B44 writes; reports both directions with equal weight."""
+    watch = _reentry_load()
+    rows = []
+    for t, w in sorted(watch.items()):
+        ex = w.get("exit_price")
+        px = (quotes.get(t) or {}).get("price")
+        if not (ex and px):
+            continue
+        try:
+            d0 = dt.date.fromisoformat(str(w.get("exit_date")))
+            days = (dt.date.today() - d0).days
+        except Exception:
+            days = None
+        rows.append({"ticker": t, "exit_date": w.get("exit_date"), "kind": w.get("kind") or "full",
+                     "exit_price": ex, "price": px, "since_pct": round((px / ex - 1) * 100, 1),
+                     "days": days})
+    return sorted(rows, key=lambda r: -(r["since_pct"] or 0))
+
+def _exit_track_md(rows):
+    """B50 rendering. Code-rendered; both directions reported, no softening either way."""
+    if not rows:
+        return ""
+    L = ["## 🔭 离场后跟踪（B50 · 卖对了还是卖早了）", "",
+         "| 票 | 离场日 | 类型 | 离场价 | 现价 | 离场后 | 天数 |", "|---|---|---|---|---|---|---|"]
+    for r in rows:
+        mark = "📈 卖早了" if r["since_pct"] > 0 else ("📉 卖对了" if r["since_pct"] < 0 else "—")
+        L.append("| %s | %s | %s | %.2f | %.2f | **%+.1f%%** %s | %s |" % (
+            r["ticker"], r["exit_date"], {"partial": "近乎清仓", "backfill": "回填⚠️"}.get(r["kind"], "清仓"),
+            r["exit_price"], r["price"], r["since_pct"], mark, r["days"] if r["days"] is not None else "-"))
+    up = [r for r in rows if r["since_pct"] > 0]
+    dn = [r for r in rows if r["since_pct"] < 0]
+    med = sorted(r["since_pct"] for r in rows)[len(rows) // 2]
+    L += ["", "**离场 %d 次：卖早了 %d 次 / 卖对了 %d 次，离场后涨跌中位数 %+.1f%%**" % (
+        len(rows), len(up), len(dn), med),
+        "> 与 B29 记分板配对使用：B29 算「无视卖出信号的代价」，本表算「卖出本身的代价」。"
+        "**只看 B29 会让系统结构性偏向卖出。**",
+        "> ⚠️ 标「回填」的行是从 signal_history 补出来的（B44 上线前的离场），**离场价用的是最后一次观察到的快照价、不是成交价**，误差更大。",
+        "> 这不是让你别卖——止损的代价本来就是「多数时候卖了会涨」（见 B51：一年 82 次触发，72% 在 20 日内上涨）。"
+        "本表的用途是让代价可见、可累计，而不是凭一次卖飞改规则。", ""]
+    return "\n".join(L) + "\n---\n\n"
 
 OUTSIDE_LAYER = "outside_framework"   # B53: the ONLY value meaning "really outside the framework"
 
@@ -618,7 +699,7 @@ def build() -> str:
         cur_mv = {t: p["mv"] for t, p in positions.items() if t not in exclude}
         port_note = ""
         _append_nav(today, net_liq)
-        closed, prev_pos = _reflect_on_closes(positions, exclude, mem, today)
+        closed, trimmed_out, prev_pos = _reflect_on_closes(positions, exclude, mem, today)
         drift_extra = sorted(set(holdings) - set(cfg_holdings))   # held, not yet annotated in config
         drift_gone = sorted(set(cfg_holdings) - set(holdings))    # stale config entries (can delete)
     else:
@@ -684,7 +765,7 @@ def build() -> str:
             profit_takes.append({"ticker": t, "pnl_pct": pp, "trigger": pt_trig, "frac": pt_frac,
                                  "trim_usd": round(d["market_value"] * pt_frac),
                                  "low10": round(min(lows), 2) if lows else None})
-    reentries = _reentry_update(closed, quotes, today, net_liq, maxpos_pct)            # B44
+    reentries = _reentry_update(closed, quotes, today, net_liq, maxpos_pct, trimmed_out)  # B44 + B50
     audit_rows, audit_tot = _position_audit(holdings_snapshot, caps, net_liq, theme_of, hard_cap_usd)  # B48
     action_md = _action_plan(holdings_snapshot, caps, portfolio_heat_pct, candidates, cash, hard_cap_usd,
                              violations=violations, mkt=mkt, theme_alerts=theme_alerts,

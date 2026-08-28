@@ -7,19 +7,19 @@ account:
 strategy: momentum_mainline + serenity_chokepoint   # 跟热点、不强行分散
 
 holdings:                          # 角色注释 + IBKR 掉线兜底（B33 起持仓名单由 live Flex 驱动；IBKR 票=吉祥物，已排除；2026-08-22 对 live 同步）
-  - { ticker: NVDA, role: "半导体/主线龙头" }
-  - { ticker: MU,   role: "内存HBM双雄之一/超$30k硬顶（减仓信号持续中）" }
-  - { ticker: SKHY, role: "SK海力士ADR/第一大仓、超$30k硬顶（FMP已核=SK hynix Inc./NASDAQ，CIK 2120882；Flex代码2026-08起为SKHY，曾用SKHYV）" }
+  - { ticker: NVDA, role: "NVIDIA：GPU + AI 数据中心算力与网络，另有汽车/专业可视化（核实 2026-08-25，源=FMP profile + identity-event 新闻扫描；身份无变更）" }
+  - { ticker: MU,   role: "Micron：DRAM/HBM/NAND，**唯一美国本土内存制造商**（核实 2026-08-25，源=FMP profile；身份无变更）。超$30k硬顶，减仓信号持续中" }
+  - { ticker: SKHY, role: "SK海力士ADR/第一大仓、超$30k硬顶（FMP已核=SK hynix Inc./NASDAQ，CIK 2120882；Flex代码2026-08起为SKHY，曾用SKHYV）。核实 2026-08-25：FMP profile isAdr=true / country=KR，**是真 ADR 不是合成跟踪产品**；2026-07-10 上市，SKHYV 为并存的第二条 NASDAQ 线" }
   - { ticker: ORCL, role: "企业软件+OCI 云基础设施；Software-Infrastructure，CEO Michael D. Sicilia，14.1万员工（核实 2026-08-25，源=FMP profile）。⚠️ 债务 $104B→$156B（一年 +50%，源=FMP enterprise-values），AI capex 加杠杆是当前主要风险，不是稀释。破位·全组合最弱（RS −25）" }
-  - { ticker: MRVL, role: "半导体/定制ASIC（禁再加仓，守20日低失效线）" }
+  - { ticker: MRVL, role: "Marvell：定制 AI ASIC / 光 DSP / 以太网与数据中心互连芯片（核实 2026-08-25，源=FMP profile；Google 定制芯片协议属商业事件非身份变更）。禁再加仓，守20日低失效线" }
   - { ticker: AVGO, role: "半导体（定制 AI ASIC / 网络）**+ 基础设施软件（VMware）双主业**——原注释只写了半导体那一半。CEO Hock Tan（核实 2026-08-25，源=FMP profile）。2026-08 有 AI 融资安排的新闻，规模口径不一，我未读原始文件，未采信" }
   - { ticker: KLAC, role: "半导体过程控制：晶圆/掩模检测与量测（不是前道制程设备）。**2026-06-12 十股拆一股（10:1）**——日报曾报流通股 YoY +890% 疑似稀释，实为拆股（核实 2026-08-25，源=FMP splits-company）。2026-08 曾亏损摊平，L14 留痕" }
   - { ticker: ASX,  role: "ASE Technology 台湾 OSAT ADR（NYSE，CIK 1122411，isAdr=true）：封装+测试+EMS，含 fan-out WLP / 2.5D 硅中介层等先进封装（核实 2026-08-25，源=FMP profile）。⚠️ 原注释「低毛利环节」需重估——先进封装占比在上升，别再用旧标签直接判它该走" }
   - { ticker: AAOI, role: "光模块（🚩稀释否决级：2026-08-21 新提交 $600M ATM 424B5，发行前流通股 84,906,289、净额约 $412M、用途 general corporate purposes；叠加流通股 YoY+35.6% 与此前 424B5x3。Serenity #7 = 结构性否决/封顶。核实于 2026-08-25，源=SEC 424B5 原文）" }
   - { ticker: GLW,  role: "Corning：**五大板块**（光通信 / 显示玻璃 / 特殊材料 / 汽车 / 生命科学），不是纯光通信标的（核实 2026-08-25，源=FMP profile）。原注释「光通信玻璃」只覆盖其中一块，会高估它对 AI 光模块周期的贝塔。曾破止损参考位" }
-  - { ticker: SOXX, role: "半导体ETF（与单股持仓高度重复，处置方案第一批候选）" }
-  - { ticker: CCXI, role: "Churchill Capital XI → **Agility Robotics** 人形机器人/Physical AI 的 de-SPAC（2026-06-24 签定最终合并协议，$2.5B 估值；2026-07-14 保密提交 S-4；Digit 已部署于 Amazon/Toyota/GXO）。⚠️ 2026-08-25 更正：此前注释写「SPAC空壳，体系外」是错的，且该错误曾把它推上处置清单第一位。合并未交割前仍是 SPAC 载体（FMP 行业仍标 Shell Companies），交割风险自负；两次亏损摊平 L18 留痕不变。" }
-  - { ticker: RAM,  role: "2x杠杆ETF(Roundhill T-REX 2X Long DRAM)——红线v2窄门内合规(≈3.4%净值)；趋势工具：硬止损−15%/20日低，禁亏损加仓，负现金期间禁补仓" }
+  - { ticker: SOXX, role: "iShares 半导体 ETF（BlackRock；**跟踪 NYSE/ICE 半导体指数，2021-06 起已非 PHLX SOX**）（核实 2026-08-25，源=FMP profile）。与单股持仓高度重复，处置第一批候选" }
+  - { ticker: CCXI, role: "Churchill Capital XI → **Agility Robotics** 人形机器人/Physical AI 的 de-SPAC（2026-06-24 签定最终合并协议，$2.5B 估值；2026-07-14 保密提交 S-4；Digit 已部署于 Amazon/Toyota/GXO）。⚠️ 2026-08-25 更正：此前注释写「SPAC空壳，体系外」是错的，且该错误曾把它推上处置清单第一位。合并未交割前仍是 SPAC 载体（FMP 行业仍标 Shell Companies），交割风险自负；两次亏损摊平 L18 留痕不变。（核实 2026-08-25，源=FMP profile + Business Wire/S-4 新闻）" }
+  - { ticker: RAM,  role: "2x杠杆ETF(Roundhill T-REX 2X Long DRAM)——红线v2窄门内合规(≈3.4%净值)；趋势工具：硬止损−15%/20日低，禁亏损加仓，负现金期间禁补仓。核实 2026-08-25，源=FMP profile：Roundhill T-REX 2X Long DRAM Daily Target ETF，2026-06-24 于 CBOE 上市，**标的是 Roundhill Memory ETF「DRAM」的 2 倍日收益，不是某个 DRAM 指数**——与自选清单里的 DRAM 是同一敞口的 1x/2x" }
 exclude: [IBKR]                    # 吉祥物，不计入分析
 
 # AI 供应链子板块地图（取自 Serenity theses.md）——选股自下而上的池
@@ -63,7 +63,9 @@ risk:                              # 移植 ai-hedge-fund risk_manager
   leverage_factors: { RAM: 2.0 }             # 杠杆产品按基础敞口倍数计入主题敞口（红线v2⑥）
   profit_take_trigger_pct: 25                # B45 止盈触发：浮盈≥此值 提示减仓/上移止损
   profit_take_fraction: 0.33                 # B45 止盈建议减仓比例
-  reentry_watch_days: 90                     # B44 再入场观察有效期（天）
+  reentry_watch_days: 90                     # B44 再入场观察有效期（天）——**提示**窗口
+  exit_track_days: 365                       # B50 离场后跟踪窗口（天）——**测量**窗口，比提示窗口长：
+                                             # 提示 6 个月前离场的票是噪音，但「那次卖对了吗」半年后仍值得算
   # B48 持仓体检（2026-08-23 用户拍板）：执行止损改用 20 日收盘低×0.99；200日线降级为趋势旗标
   high_conviction_rs: 20                     # RS(vs200−SPY) ≥ 此值 = 已证明相对领先 → 用高风险档
   risk_pct_high: 2.0                         # 高信念票单笔风险%（路线乙）
