@@ -20,6 +20,18 @@
    "kind": "backfill",
    "prompted": "n/a",
    "note": "seeded from signal_history; exit_price = last observed, not fill"
+  },
+  "AVGO": {
+   "exit_date": "2026-08-28",
+   "exit_price": 371.54,
+   "kind": "full",
+   "prompted": null
+  },
+  "NVDA": {
+   "exit_date": "2026-08-28",
+   "exit_price": 227.98,
+   "kind": "full",
+   "prompted": "2026-08-28"
   }
  }
 }

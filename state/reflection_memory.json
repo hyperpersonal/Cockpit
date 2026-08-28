@@ -203,6 +203,28 @@
         "violation",
         "CCXI"
       ]
+    },
+    {
+      "id": "L19",
+      "situation": "Closed/exited position AVGO (last unrealized -0.9%).",
+      "lesson": "Position AVGO left the book at ~-0.9%. Review: did the exit follow the thesis and stop discipline? Record realized outcome and what to repeat/avoid.",
+      "source": "auto: position-close detector",
+      "tags": [
+        "postmortem",
+        "exit",
+        "AVGO"
+      ]
+    },
+    {
+      "id": "L20",
+      "situation": "Closed/exited position NVDA (last unrealized 7.4%).",
+      "lesson": "Position NVDA left the book at ~7.4%. Review: did the exit follow the thesis and stop discipline? Record realized outcome and what to repeat/avoid.",
+      "source": "auto: position-close detector",
+      "tags": [
+        "postmortem",
+        "exit",
+        "NVDA"
+      ]
     }
   ]
 }
