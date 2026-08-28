@@ -6,7 +6,8 @@ daily (holdings_snapshot + position_caps), (4) surface TODOs, (5) flag UNEXPECTE
 (informational/constitution keys are allowlisted), (6) BACKLOG hygiene (no row both OPEN and DONE),
 (7) done-manifest (every DONE claim must have a real code/doc fingerprint),
 (8) every held ticker resolves to a layer (B53),
-(9) every holdings[].role carries a verification stamp (B54 -- unverified annotations drive real sell advice).
+(9) every holdings[].role carries a verification stamp (B54 -- unverified annotations drive real sell advice),
+(10) one-shot state is spent only on a DELIVERED brief (B60).
 Exit nonzero on hard fail."""
 import ast, glob, re, sys, pathlib, yaml
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -102,7 +103,19 @@ DONE_FINGERPRINTS = {
     "B28": ("cockpit/scanner.py", "_clusters"),
     "B41": ("cockpit/scanner.py", "_growth_ok"),
     "B48": ("cockpit/daily_brief.py", "_position_audit"),
+    "B49": ("cockpit/biweekly_review.py", "_attribution"),
+    "B50": ("cockpit/daily_brief.py", "_exit_tracking"),
+    "B51": ("tools/b51_stop_replay.py", "inbreach"),
+    "B53": ("cockpit/daily_brief.py", "OUTSIDE_LAYER"),
+    "B54": ("selfcheck.py", "\u7f3a\u6838\u5b9e\u6807\u8bb0"),
+    "B55": ("cockpit/scanner.py", "fresh_md"),
+    "B57": (".github/workflows/daily-brief.yml", "30 22"),
+    "B58": ("cockpit/daily_brief.py", "prior20"),
+    "B59": ("cockpit/daily_brief.py", "EMAIL SEND FAILED"),
+    "B60": ("cockpit/daily_brief.py", "flush_pending_writes"),
 }
+# NOT yet fingerprinted (older DONE rows, coverage gap I have not closed):
+# B1 B2 B3 B6 B9 B23 B25 B27 B40 B52 -- gate 7 is silent about these by construction.
 for bid, (relpath, needle) in DONE_FINGERPRINTS.items():
     if not re.search(rf"^\|\s*{bid}\b.*(DONE|✅)", backlog_txt, re.M):
         continue                                   # only enforce ids BACKLOG actually claims DONE
@@ -141,6 +154,27 @@ for _h in (cfg.get("holdings") or []):
 if _bad:
     fail.append("holdings[].role 缺核实标记（须含「核实 YYYY-MM-DD，源=...」或明写「未核实」）: "
                 + ", ".join(str(x) for x in _bad))
+
+# (10) B60: one-shot state (close detection, re-entry prompts) must be spent only on a DELIVERED
+# brief. On 2026-08-28 an undelivered 06:14 UTC run consumed the NVDA/AVGO exit postmortem and the
+# NVDA re-entry prompt; the delivered 06:55 run had nothing left to report. If daily_brief queues
+# deferred writes but main() never flushes them, the opposite failure appears -- state silently
+# never advances -- so both halves are checked.
+_db = SRC.get(str(ROOT / "cockpit" / "daily_brief.py"), "")
+if "_defer(" in _db:
+    _main = _db.split("def main()")[-1]
+    # must be a REAL call, not a commented-out one (the first version of this gate passed on
+    # "# flush_pending_writes()" -- a checker that accepts a comment checks nothing)
+    _called = any(ln.strip().startswith("flush_pending_writes()") for ln in _main.splitlines())
+    if not _called:
+        fail.append("daily_brief.main() never calls flush_pending_writes() -- B60 deferred one-shot "
+                    "state would be dropped on EVERY run")
+    if 'json.dump({"date": today, "positions": cur}' in _db:
+        fail.append("daily_brief writes last_positions.json EAGERLY again -- B60 regression: an "
+                    "undelivered brief would consume the close detection")
+    if 'w["prompted"] = today' in _db:
+        fail.append("daily_brief stamps reentry 'prompted' EAGERLY again -- B60 regression: an "
+                    "undelivered brief would spend the re-entry prompt")
 
 print("=== Cockpit self-check ===")
 for w in warn: print("  WARN:", w)

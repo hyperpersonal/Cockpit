@@ -9,7 +9,7 @@ from . import fmp, ibkr, risk, screener, llm, notify, calendars
 from .memory import ReflectionMemory
 from .daily_brief import (_theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md,
                           _corr_universe, _theme_exposure, _position_audit, _audit_md,
-                          _exit_tracking, _exit_track_md)
+                          _exit_tracking, _exit_track_md, flush_pending_writes)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -321,6 +321,8 @@ def main():
     if not ok:
         print("EMAIL SEND FAILED -- check EMAIL_PASSWORD (a Google password change revokes app passwords)")
         sys.exit(1)
+    flush_pending_writes()   # B60: no-op today (biweekly queues nothing), but any deferring helper
+                             # imported from daily_brief must not silently drop its write here.
 
 
 if __name__ == "__main__":

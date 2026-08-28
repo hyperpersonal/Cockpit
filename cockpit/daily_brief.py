@@ -70,6 +70,30 @@ def _append_nav(date_str, net_liq):
     except Exception:
         pass
 
+# B60 (2026-08-28): ONE-SHOT content must not be consumed by a brief that was never DELIVERED.
+# Incident: a 06:14 UTC run on 2026-08-28 detected the NVDA/AVGO exits, wrote last_positions.json and
+# stamped reentry_watch["NVDA"]["prompted"] -- then its email silently failed (stale app password).
+# The 06:55 run compared against the ALREADY-updated snapshot, saw no closes, and the exit postmortem
+# plus the NVDA re-entry prompt were gone for good. B59 (exit 1 on send failure) and the workflow's
+# `if: always()` Persist step make this WORSE rather than better: the run turns red but the state that
+# consumed the content is committed anyway. So every write that CONSUMES a one-shot signal is deferred
+# and flushed only after notify.send() confirms delivery. Measurement-only writes (nav_history,
+# signal_history, scanner_state) are deliberately NOT deferred -- they must record every session.
+_PENDING_WRITES = []
+
+def _defer(fn):
+    """Queue a state write that may happen ONLY if the brief is actually delivered."""
+    _PENDING_WRITES.append(fn)
+
+def flush_pending_writes():
+    """B60: called only after notify.send() returns True."""
+    for fn in _PENDING_WRITES:
+        try:
+            fn()
+        except Exception:
+            pass
+    _PENDING_WRITES.clear()
+
 def _reflect_on_closes(positions, exclude, mem, today):
     """B5 close-detector. state/last_positions.json now stores {shares, avg, pnl_pct} per
     ticker (B34/B37 data layer; old float-only format still readable). Returns (closed, prev)
@@ -115,13 +139,11 @@ def _reflect_on_closes(positions, exclude, mem, today):
                     lesson=("Position %s left the book at ~%s%%. Review: did the exit follow the thesis "
                             "and stop discipline? Record realized outcome and what to repeat/avoid." % (t, last)),
                     source="auto: position-close detector", tags=["postmortem", "exit", t])
-        try: mem.save()
-        except Exception: pass
-    try:
-        json.dump({"date": today, "positions": cur}, open(p, "w", encoding="utf-8"),
-                  ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+        _defer(mem.save)                                     # B60: memory.add has no dedupe
+    # B60: writing this snapshot is what CONSUMES the close/near-exit detection -- once `cur` is on
+    # disk the next run sees no closes. Defer it: an undelivered brief must leave the detector armed.
+    _defer(lambda _p=p, _t=today, _c=dict(cur): json.dump(
+        {"date": _t, "positions": _c}, open(_p, "w", encoding="utf-8"), ensure_ascii=False, indent=2))
     return closed, trimmed_out, prev
 def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, dilution_on=True, closes=None):
     """B20: market value & P&L use the CURRENT FMP price x IBKR shares (not the stale Flex price).
@@ -224,8 +246,7 @@ def _opens_and_violations(prev, positions, exclude, setups, mem, today):
                         source="auto: averaging-down detector (B37)", tags=["L1", "violation", t])
                 changed = True
     if changed:
-        try: mem.save()
-        except Exception: pass
+        _defer(mem.save)                                     # B60: same one-shot `prev` snapshot
     return opened, violations
 
 def _append_signal_log(today, net_liq, heat_pct, snapshot, caps):
@@ -283,6 +304,13 @@ def _reentry_load():
     except Exception:
         return {}
 
+def _reentry_dump(watch):
+    try:
+        json.dump({"watch": watch}, open(ROOT / "state" / "reentry_watch.json", "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
 def _reentry_update(closed, quotes, today, net_liq, maxpos_pct, trimmed=None):
     """B44 re-entry watch: every fully-closed position enters a watch list; when it later CLOSES
     back above its 50DMA the action plan proposes a rule-based re-entry with fresh 1%-risk
@@ -303,7 +331,7 @@ def _reentry_update(closed, quotes, today, net_liq, maxpos_pct, trimmed=None):
     cutoff = (dt.date.today() - dt.timedelta(days=track_days)).isoformat()
     watch = {t: w for t, w in watch.items() if str(w.get("exit_date") or today) >= cutoff}
     prompt_cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
-    prompts = []
+    prompts, stamp_after_send = [], []
     for t, w in watch.items():
         if w.get("prompted") or w.get("kind") == "partial":
             continue
@@ -316,12 +344,16 @@ def _reentry_update(closed, quotes, today, net_liq, maxpos_pct, trimmed=None):
             prompts.append({"ticker": t, "price": px, "ma50": round(a50, 2),
                             "exit_date": w.get("exit_date"),
                             "shares": sz.get("shares"), "value": sz.get("position_value")})
-            w["prompted"] = today
-    try:
-        json.dump({"watch": watch}, open(ROOT / "state" / "reentry_watch.json", "w", encoding="utf-8"),
-                  ensure_ascii=False, indent=1)
-    except Exception:
-        pass
+            stamp_after_send.append(t)          # B60: a prompt fires ONCE -- spend it on delivery only
+    _reentry_dump(watch)                        # new entries + pruning are measurement: persist now
+    if stamp_after_send:
+        def _stamp(_ts=tuple(stamp_after_send), _d=today):
+            w2 = _reentry_load()
+            for t in _ts:
+                if t in w2:
+                    w2[t]["prompted"] = _d
+            _reentry_dump(w2)
+        _defer(_stamp)
     return prompts
 
 def _exit_tracking(quotes):
@@ -800,7 +832,13 @@ def build() -> str:
               "Obey phase_rule. Never output buy/sell orders. Do not use prior knowledge for prices.\n\n"
               "DATA(JSON):\n" + json.dumps(bundle, ensure_ascii=False, default=str)[:60000])
     body = llm.run(prompt, model=CFG["models"]["daily"], max_tokens=1800)
-    header = ("> ⏱️ 持仓数据截至 %s（IBKR Flex 上一交易日；**当日交易可能未反映**——如需当日，Flex 周期改 Today）。\n\n"
+    # B60: the old text told the reader to "set the Flex period to Today". There IS no Today option
+    # (verified 2026-08-28 against the Flex Delivery Configuration dropdown), so it was an instruction
+    # nobody could follow. as_of is the reportDate of the LAST EquitySummary row, i.e. the newest
+    # statement IBKR has produced. Prices are FMP EOD closes and exclude after-hours moves --
+    # verified 2026-08-28: MU 935.39 / MRVL 241.45 matched the 08-27 regular close exactly.
+    header = ("> ⏱️ 持仓数据截至 %s（IBKR Flex 统计期末日 = IBKR 已出具报表的最新交易日；Flex 无 Today 选项）。"
+              "价格为 FMP 收盘价，**不含盘后/隔夜**（财报后的波动不会反映在本表）。\n\n"
               % as_of) if as_of else ""
     drift = ""
     if drift_extra or drift_gone:
@@ -836,6 +874,8 @@ def main():
     if not ok:
         print("EMAIL SEND FAILED -- check EMAIL_PASSWORD (a Google password change revokes app passwords)")
         sys.exit(1)
+    flush_pending_writes()   # B60: one-shot state (close detection, re-entry prompts) is spent ONLY
+                             # after the brief actually reached the inbox.
 
 
 if __name__ == "__main__":
