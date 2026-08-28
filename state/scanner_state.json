@@ -528,63 +528,47 @@
   "BBWI": "Specialty Retail"
  },
  "universe_date": "2026-08-24",
- "cursor": 474,
+ "cursor": 198,
  "hits": {
   "ABNB": {
    "first_seen": "2026-08-24",
-   "last_seen": "2026-08-26",
-   "off_high": -2.3,
-   "rs": 30.0,
+   "last_seen": "2026-08-28",
+   "off_high": -4.7,
+   "rs": 25.4,
    "industry": "Travel Services",
-   "price": 188.9971
-  },
-  "CAKE": {
-   "first_seen": "2026-08-24",
-   "last_seen": "2026-08-26",
-   "off_high": -2.9,
-   "rs": 66.0,
-   "industry": "Restaurants",
-   "price": 115.023
+   "price": 184.4
   },
   "CHYM": {
    "first_seen": "2026-08-24",
-   "last_seen": "2026-08-26",
-   "off_high": -1.6,
-   "rs": 41.2,
+   "last_seen": "2026-08-28",
+   "off_high": -1.8,
+   "rs": 40.4,
    "industry": "Software - Application",
-   "price": 33.1999
+   "price": 33.36
   },
   "CRL": {
    "first_seen": "2026-08-24",
-   "last_seen": "2026-08-26",
-   "off_high": -1.4,
-   "rs": 43.7,
+   "last_seen": "2026-08-28",
+   "off_high": -2.3,
+   "rs": 42.1,
    "industry": "Medical - Diagnostics & Research",
-   "price": 296.475
+   "price": 296.41
   },
   "DINO": {
    "first_seen": "2026-08-24",
-   "last_seen": "2026-08-26",
-   "off_high": -1.4,
-   "rs": 44.1,
+   "last_seen": "2026-08-28",
+   "off_high": -1.5,
+   "rs": 42.5,
    "industry": "Oil & Gas Refining & Marketing",
-   "price": 97.02
-  },
-  "EXPE": {
-   "first_seen": "2026-08-24",
-   "last_seen": "2026-08-26",
-   "off_high": -1.2,
-   "rs": 23.6,
-   "industry": "Travel Services",
-   "price": 337.6234
+   "price": 97
   },
   "FCX": {
    "first_seen": "2026-08-24",
-   "last_seen": "2026-08-26",
-   "off_high": -1.8,
-   "rs": 24.3,
+   "last_seen": "2026-08-28",
+   "off_high": -2.3,
+   "rs": 22.6,
    "industry": "Copper",
-   "price": 78.8211
+   "price": 78.43
   },
   "HNGE": {
    "first_seen": "2026-08-24",
@@ -692,19 +676,11 @@
   },
   "ZETA": {
    "first_seen": "2026-08-26",
-   "last_seen": "2026-08-26",
-   "off_high": -4.7,
-   "rs": 37.0,
+   "last_seen": "2026-08-28",
+   "off_high": -0.6,
+   "rs": 44.5,
    "industry": "Software - Application",
-   "price": 28.475
-  },
-  "CNC": {
-   "first_seen": "2026-08-26",
-   "last_seen": "2026-08-26",
-   "off_high": -4.6,
-   "rs": 26.6,
-   "industry": "Medical - Healthcare Plans",
-   "price": 66.18
+   "price": 30.22
   },
   "GH": {
    "first_seen": "2026-08-26",
@@ -737,6 +713,30 @@
    "rs": 47.8,
    "industry": "Software - Infrastructure",
    "price": 107.02
+  },
+  "VLO": {
+   "first_seen": "2026-08-28",
+   "last_seen": "2026-08-28",
+   "off_high": -1.8,
+   "rs": 39.3,
+   "industry": "Oil & Gas Refining & Marketing",
+   "price": 346.59
+  },
+  "CRWD": {
+   "first_seen": "2026-08-28",
+   "last_seen": "2026-08-28",
+   "off_high": -0.5,
+   "rs": 54.0,
+   "industry": "Software - Infrastructure",
+   "price": 227.96
+  },
+  "DT": {
+   "first_seen": "2026-08-28",
+   "last_seen": "2026-08-28",
+   "off_high": -1.5,
+   "rs": 20.6,
+   "industry": "Software - Application",
+   "price": 53.43
   }
  },
  "cluster_first_seen": {
