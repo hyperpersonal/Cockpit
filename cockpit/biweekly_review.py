@@ -7,6 +7,8 @@ from __future__ import annotations
 import os, sys, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, llm, notify, calendars
 from .memory import ReflectionMemory
+from .ledger import performance as ledger
+from .domain import policy
 from .daily_brief import (_theme_of, _universe, _hist_window, _holdings_snapshot, _candidates_md,
                           _corr_universe, _theme_exposure, _position_audit, _audit_md,
                           _exit_tracking, _exit_track_md, flush_pending_writes)
@@ -52,7 +54,23 @@ def _performance(net_liq_now, bench, today) -> dict:
             "note": "approx period net-liq return (not deposit-adjusted); SPY price return same window"}
 
 def _attribution(window_days: int = 14) -> dict | None:
-    """B49 performance attribution from state/signal_history.json.
+    """R4 (2026-08-28): delegates to cockpit.ledger.performance.attribution_with_exits.
+
+    The version that used to live here dropped every name that left the book: the 选股/尺寸
+    buckets skipped it outright (`if not vN: continue`) and the market-P&L bucket kept the
+    days before the exit but lost the final leg (`if not vb: continue`) -- and that lost leg
+    was absorbed by `residual`, a bucket the email labels "deposits / interest / fees". So
+    trading results on sold positions were being reported as external cash flow. Measured on
+    a synthetic case in tests/test_ledger.py: 50 of 140 booked, the missing 90 in residual.
+
+    TWR also moves here, because it needs external cash flows to mean anything: NAV went
+    9,968.29 -> 159,528.31 on 160,000.00 of deposits while the account LOST money (IBKR's own
+    TWR for the period: -1.62%). When flows are not reconciled through the end of the window,
+    TWR is REFUSED rather than approximated.
+
+    Legacy docstring follows.
+
+    B49 performance attribution from state/signal_history.json.
 
     Why not just NAV: `_performance()` reports the raw NAV change, which is polluted by deposits,
     withdrawals and margin interest -- the 2026-08-22 review printed +8.03% with no adjustment and
@@ -77,6 +95,33 @@ def _attribution(window_days: int = 14) -> dict | None:
       - commissions and slippage are not visible here
       - `residual` lumps external flows together with interest and fees; it is not a clean flow figure
     Fail-open: returns None if there is not enough history."""
+    try:
+        raw = json.load(open(ROOT / "state" / "signal_history.json", encoding="utf-8")).get("days") or []
+    except Exception:
+        return None
+    try:
+        watch = json.load(open(ROOT / "state" / "reentry_watch.json", encoding="utf-8")).get("watch") or {}
+    except Exception:
+        watch = {}
+    exit_prices = {t: w.get("exit_price") for t, w in watch.items() if w.get("exit_price")}
+    exit_kinds = {t: w.get("kind") for t, w in watch.items()}
+    a = ledger.attribution_with_exits(raw, window_days=window_days, exit_prices=exit_prices,
+                                      exit_kinds=exit_kinds)
+    if not a:
+        return None
+    navs = {d["date"]: d["net_liq"] for d in raw if d.get("date") and d.get("net_liq")}
+    flows, through, flow_src = ledger.load_cash_flows()
+    a["twr"] = ledger.twr({k: v for k, v in navs.items() if a["d0"] <= k <= a["dN"]},
+                          flows, verified_through=through)
+    a["twr_pct"] = a["twr"].get("twr_pct")
+    a["flow_source"] = flow_src
+    a["raw_nav_pct"] = round((a["navN"] / a["nav0"] - 1) * 100, 2) if a["nav0"] else None
+    a["timing_usd"] = None            # frozen shares comparison moves with the ledger rewrite
+    return a
+
+
+def _attribution_legacy(window_days: int = 14) -> dict | None:
+    """Kept only so the regression tests can prove what the old shape did. Not called."""
     try:
         raw = json.load(open(ROOT / "state" / "signal_history.json", encoding="utf-8")).get("days") or []
     except Exception:
@@ -148,14 +193,18 @@ def _attribution_md(a) -> str:
     L = ["## 🧮 业绩归因（B49 · 规则直出 · %s → %s，%d 个交易日）" % (a["d0"], a["dN"], a["n_days"]), "",
          "| 口径 | 数值 | 它回答什么 |", "|---|---|---|",
          "| 净值变动（未调整） | %+.2f%% | 旧口径，**被出入金污染，不可直接当业绩** |" % a["raw_nav_pct"],
-         "| **TWR（剔除出入金）** | **%+.2f%%** | 你的**投资**表现 |" % a["twr_pct"],
+         "| **TWR（剔除出入金）** | %s | 你的**投资**表现 |" % (
+             ("**%+.2f%%**" % a["twr_pct"]) if a.get("twr_pct") is not None
+             else "**拒绝给出** — " + str((a.get("twr") or {}).get("refused", "现金流未对账"))),
          "| 市场盈亏 | $%s | 持仓本身赚/亏的钱 |" % format(a["mkt_pnl"], "+,.0f"),
          "| 残差（出入金/利息/费用） | $%s | 不是投资结果，是钱进出与融资成本 |" % format(a["residual"], "+,.0f"),
          "", "**三分归因**", "",
          "| 来源 | 贡献 | 读法 |", "|---|---|---|",
          "| 选股（等权持有这批票） | %+.2f%% | 这批**票**本身怎么样 |" % a["pick_pct"],
          "| 尺寸（实际权重 − 等权） | %+.2f%% | 你的**权重分配**赚了还是亏了 |" % a["size_pct"],
-         "| 择时（实际 − 首日股数不动） | $%s | 期间的**加减仓**帮了还是害了 |" % format(a["timing_usd"], "+,.0f"),
+         ("| 择时（实际 − 首日股数不动） | $%s | 期间的**加减仓**帮了还是害了 |"
+          % format(a["timing_usd"], "+,.0f")) if a.get("timing_usd") is not None
+         else "| 择时 | 本期不计算 | 随账本重写暂停，不给一个算不准的数 |",
          ""]
     top = a["per"][:6]
     if top:
@@ -163,9 +212,40 @@ def _attribution_md(a) -> str:
               "| 票 | 贡献$ |", "|---|---|"]
         L += ["| %s | $%s |" % (t, format(v, "+,.0f")) for t, v in top]
         L.append("")
+    ex = a.get("exits") or {}
+    if ex:
+        L += ["**窗口内离场的持仓（R4：不再被丢掉）**", "",
+              "| 票 | 离场日 | 盈亏$ | 定价依据 |", "|---|---|---|---|"]
+        _basis = {"broker": "券商已实现（权威）", "estimated": "⚠️ 按最后报价估算，非成交价",
+                  "backfill": "⚠️⚠️ 回填条目，离场价=最后快照价，误差最大",
+                  "unknown": "❓ 无价可用——报告为未知，不报告为 0"}
+        for t, e in sorted(ex.items()):
+            L.append("| %s | %s | %s | %s |" % (
+                t, e.get("exit_date") or "-",
+                ("$" + format(e["usd"], "+,.0f")) if e.get("usd") is not None else "未知",
+                _basis.get(e.get("basis"), e.get("basis"))))
+        L.append("")
+    cov = a.get("coverage") or {}
     L += ["> 口径边界：窗口 = signal_history 里**最近的这些交易日**（该台账 2026-07-20 才开始记，故**绝非成立以来**）；",
           "> 价格取自日报快照，B57（2026-08-27）改盘后之前那些日子是**盘中价**，早期数据带盘中噪音；",
-          "> 不含佣金与滑价；残差把出入金、利息、费用混在一起，**不是干净的现金流数字**。", ""]
+          "> 不含佣金与滑价。**残差含义**：%s。" % cov.get("residual_meaning", "外部现金流 + 利息 + 费用"),
+          "> 外部现金流来源：%s；对账至 %s。" % (
+              a.get("flow_source") or "未对账", (a.get("twr") or {}).get("window") or "-"),
+          ""]
+    if cov.get("unknown"):
+        L.append("> ⚠️ 以下离场无法定价，其盈亏**仍落在残差里**：" + "、".join(cov["unknown"]))
+    if cov.get("priced_from_last_quote"):
+        L.append("> ⚠️ 以下离场按最后观察到的报价估算，**不是成交价**：" + "、".join(cov["priced_from_last_quote"]))
+    if cov.get("priced_from_backfill_seed"):
+        L.append("> ⚠️⚠️ 以下是 B44 上线前补记的回填条目，离场价用的是最后一次快照价——**误差最大，别当业绩读**："
+                 + "、".join(cov["priced_from_backfill_seed"]))
+    _tw = a.get("twr") or {}
+    if _tw.get("caveat"):
+        L.append("> " + _tw["caveat"])
+    if _tw.get("suspected_flows"):
+        L.append("> 🚨 疑似未记录的出入金：" + "、".join(
+            "%s（净值 %+.1f%%）" % (x["date"], x["nav_change_pct"]) for x in _tw["suspected_flows"]))
+    L.append("")
     return "\n".join(L) + "\n---\n\n"
 
 def _adherence_md() -> str:
@@ -248,8 +328,7 @@ def build() -> str:
     if bench in quotes and quotes[bench].get("priceAvg200"):
         bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
 
-    total_assets = CFG["account"].get("total_assets_usd", 250000)
-    hard_cap_usd = total_assets * CFG["risk"]["single_name_hard_cap_pct_of_total"] / 100.0
+    hard_cap_usd = policy.hard_cap_usd(CFG)   # fixed $30,000; see cockpit/domain/policy.py
     closes = _hist_window(_corr_universe(holdings, theme_of))
     # B24: risk-table MV on the SAME price basis as the snapshot -- shares x FMP
     # current price; Flex prior-day mv only when no live quote (fail-open).

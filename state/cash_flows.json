@@ -1,0 +1,21 @@
+{
+  "_source": "IBKR Activity Statement U22209151, 2025-11-03..2026-08-27, section 'Deposits & Withdrawals'",
+  "_why_a_file": "The GHA Flex query 1551541 currently requests only 'NAV in Base' + 'Open Positions', so the runner cannot see cash transactions. Until that query also returns the cash-transaction sections, this file is the reconciled record. TWR REFUSES to report past verified_through rather than treating an unseen deposit as a gain.",
+  "_lines_verified": [
+    "2026-05-28  Adjustment: Deposit Advance (First 7,910.45 of 100,000.00 Deposit)   +7,910.45",
+    "2026-05-28  Cancellation (First 7,910.45 of 100,000.00 Deposit)                  -7,910.45",
+    "2026-05-28  Electronic Fund Transfer                                           +100,000.00",
+    "2026-06-29  Adjustment: Deposit Advance (First 966.13 of 60,000.00 Deposit)        +966.13",
+    "2026-06-29  Cancellation (First 966.13 of 60,000.00 Deposit)                       -966.13",
+    "2026-06-29  Electronic Fund Transfer                                            +60,000.00",
+    "statement total Deposits & Withdrawals = 160,000.00"
+  ],
+  "flows": {
+    "2026-05-28": 100000.00,
+    "2026-06-29": 60000.00
+  },
+  "verified_through": "2026-08-27",
+  "broker_twr_pct_full_period": -1.62,
+  "broker_twr_window": "2025-11-03..2026-08-27",
+  "broker_mark_to_market": -11003.36
+}

@@ -1,0 +1,73 @@
+{
+  "_source": "IBKR Activity Statement U22209151_20251103_20260827.pdf, generated 2026-08-28 09:04:29 EDT",
+  "_extracted": "2026-08-28 by pdftotext -layout, read field-by-field from the statement itself",
+  "_authority": "PRIMARY. This is the broker's own record. Any disagreement between this file and Cockpit's computation is a Cockpit defect until proven otherwise.",
+  "period": {"from": "2025-11-03", "to": "2026-08-27"},
+  "as_of": "2026-08-27",
+
+  "nav": {
+    "total": 159528.31,
+    "cash": -9186.07,
+    "settled_cash": -23644.30,
+    "stock": 168877.45,
+    "interest_accruals": -171.31,
+    "dividend_accruals": 8.24,
+    "_identity": "stock + cash + interest_accruals + dividend_accruals == total"
+  },
+
+  "change_in_nav": {
+    "starting_value": 9968.29,
+    "mark_to_market": -11003.36,
+    "deposits_withdrawals": 160000.00,
+    "grant_activity": 503.75,
+    "dividends": 150.49,
+    "withholding_tax": -20.38,
+    "change_in_dividend_accruals": 8.23,
+    "interest": 96.85,
+    "change_in_interest_accruals": -171.31,
+    "other_fees": -2.46,
+    "commissions": -1.80,
+    "other_fx_translations": 0.01,
+    "ending_value": 159528.31
+  },
+
+  "twr_pct": -1.62,
+
+  "external_cash_flows": [
+    {"date": "2026-05-28", "description": "Electronic Fund Transfer", "amount": 100000.00},
+    {"date": "2026-06-29", "description": "Electronic Fund Transfer", "amount": 60000.00}
+  ],
+
+  "open_positions": {
+    "AAOI": {"qty": 113.4287, "cost_price": 114.609240959, "cost_basis": 12999.98, "close": 113.28, "value": 12849.20, "unrealized": -150.78},
+    "ASX":  {"qty": 120.0,    "cost_price": 41.780003,     "cost_basis": 5013.60,  "close": 38.90,  "value": 4668.00,  "unrealized": -345.60},
+    "CCXI": {"qty": 654.8184, "cost_price": 15.271409304,  "cost_basis": 10000.00, "close": 14.41,  "value": 9435.93,  "unrealized": -564.07},
+    "GLW":  {"qty": 57.5107,  "cost_price": 173.880600445, "cost_basis": 10000.00, "close": 152.80, "value": 8787.63,  "unrealized": -1212.37},
+    "IBKR": {"qty": 6.1534,   "cost_price": 87.285078168,  "cost_basis": 537.10,   "close": 96.55,  "value": 594.11,   "unrealized": 57.01,
+             "note": "unvested stock-award grant (vesting 2027-07-06), IBKR code Un;ST -- excluded from the active book"},
+    "KLAC": {"qty": 49.4851,  "cost_price": 202.080690046, "cost_basis": 9999.98,  "close": 183.77, "value": 9093.88,  "unrealized": -906.10},
+    "MRVL": {"qty": 0.741,    "cost_price": 187.000002699, "cost_basis": 138.57,   "close": 241.45, "value": 178.91,   "unrealized": 40.34},
+    "MU":   {"qty": 41.7557,  "cost_price": 1077.706119859,"cost_basis": 45000.37, "close": 935.39, "value": 39057.86, "unrealized": -5942.51},
+    "ORCL": {"qty": 164.617,  "cost_price": 182.240104303, "cost_basis": 29999.82, "close": 151.94, "value": 25011.91, "unrealized": -4987.91},
+    "RAM":  {"qty": 413.2232, "cost_price": 12.1000003,    "cost_basis": 5000.00,  "close": 12.63,  "value": 5219.01,  "unrealized": 219.01},
+    "SKHY": {"qty": 306.1124, "cost_price": 163.175326785, "cost_basis": 49949.99, "close": 161.61, "value": 49470.82, "unrealized": -479.17,
+             "note": "IBKR MTD/YTD table lists this as SKHYV = SK HYNIX INC"},
+    "SOXX": {"qty": 8.5838,   "cost_price": 582.488781891, "cost_basis": 4999.97,  "close": 525.43, "value": 4510.19,  "unrealized": -489.78}
+  },
+  "open_positions_total": {"cost_basis": 183639.37, "value": 168877.45, "unrealized": -14761.92},
+
+  "realized_pnl": {
+    "AVGO": 13.33, "META": 376.25, "MRVL": 368.32, "MSFT": 351.63,
+    "NVDA": 1444.67, "SPCX": 1120.45, "TSM": 14.06
+  },
+  "realized_total": 3688.70,
+  "unrealized_total": -14761.92,
+  "realized_plus_unrealized": -11073.23,
+
+  "fully_exited_during_period": ["AVGO", "META", "MSFT", "NVDA", "SPCX", "TSM"],
+
+  "_notes": [
+    "IBKR's own security description for CCXI is 'CHURCHILL CAPITAL CORP-CL A'. Per B54 the entity is the Agility Robotics de-SPAC. The broker's static description is stale too -- it is NOT an authority on what the company does.",
+    "Ending SETTLED cash (-23,644.30) is far more negative than ending cash (-9,186.07). Any buying-power or cash-ladder projection that uses ending cash overstates available cash."
+  ]
+}

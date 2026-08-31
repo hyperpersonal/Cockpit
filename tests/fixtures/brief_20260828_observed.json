@@ -1,0 +1,55 @@
+{
+  "_source": "Gmail - daily brief 2026-08-28.pdf (the email Cockpit actually sent, 2026-08-28 14:55 CST)",
+  "_purpose": "The BEFORE picture. These are the numbers the live system printed. They are recorded here as documented-known-bad so the refactor can be diffed against them, NOT as a target.",
+
+  "run_date": "2026-08-28",
+  "as_of_in_header": "20260827",
+  "net_liq_printed": 159528,
+  "cash_printed": -9186,
+
+  "sell_amounts_by_section": {
+    "action_plan_sells": {"MU": 27891, "ORCL": 9056, "SKHY": 35911},
+    "position_audit_cuts": {"SKHY": 40154, "MU": 27891, "ORCL": 14630, "AAOI": 3768},
+    "disposal_ladder": {"KLAC": 9094, "GLW": 8787, "RAM": 5219, "ORCL": 14630, "SKHY": 40154, "MU": 27891, "AAOI": 3768},
+    "exception_list": {"SKHY": 35911, "MU": 27891, "ORCL": 9056}
+  },
+
+  "sell_totals_by_section": {
+    "cash_routing_B46": 72858,
+    "position_audit_B48": 86442,
+    "disposal_ladder_B48b": 109543
+  },
+
+  "disposal_ladder_kind": {"KLAC": "exit", "GLW": "exit", "RAM": "exit",
+                           "ORCL": "trim", "SKHY": "trim", "MU": "trim", "AAOI": "trim"},
+  "disposal_ladder_reasons": {
+    "KLAC": "本层最弱且 RS 为负", "GLW": "本层最弱且 RS 为负", "RAM": "本层最弱且 RS 为负",
+    "ORCL": "跌破200日线（趋势失效）", "SKHY": "超出风险档尺寸", "MU": "超出风险档尺寸", "AAOI": "超出风险档尺寸"
+  },
+
+  "portfolio_heat_pct": 14.5,
+  "total_risk_usd": 23060,
+  "theme_alert": {"subtheme": "memory_hbm", "usd": 98967, "pct": 62.0, "threshold": 40},
+
+  "profit_take": {"ticker": "MRVL", "market_value": 179, "trim_usd": 59, "pnl_pct": 29.1,
+                  "shares": 0.741,
+                  "_defect": "a $59 suggestion on a 0.741-share stub -- noise, not a decision"},
+
+  "contains_schwab_qqq_text": true,
+  "schwab_qqq_text": "QQQ 定投：本月正常 1x，不加码；D1 回调子弹留好别动（B39）",
+
+  "position_market_values": {
+    "SKHY": 49471, "MU": 39058, "ORCL": 25009, "AAOI": 12849, "CCXI": 9436,
+    "KLAC": 9094, "GLW": 8787, "RAM": 5219, "ASX": 4668, "SOXX": 4510, "MRVL": 179
+  },
+
+  "_known_defects_this_email": [
+    "SKHY carries two different cut amounts in one email: 35,911 (action plan + exception list) and 40,154 (audit + ladder).",
+    "ORCL carries two different cut amounts in one email: 9,056 and 14,630.",
+    "Three different sell totals: 72,858 / 86,442 / 109,543.",
+    "Header says data is as of 20260827 while the brief is titled 2026-08-28 and nav_history recorded it under 2026-08-28.",
+    "KLAC / GLW / RAM are ordered for FULL LIQUIDATION on the reason 'weakest in layer with negative RS' alone -- an unverified structural verdict.",
+    "MRVL profit-take on a 0.741-share stub worth $179.",
+    "Schwab/QQQ DCA guidance printed inside the IBKR action plan."
+  ]
+}

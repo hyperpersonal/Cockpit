@@ -1,7 +1,7 @@
 # Cockpit 配置宪法（机器可读）。系统每次运行先读它。详见 配置宪法_CONFIG_v1.md
 account:
   net_liq_fallback: 159240        # 仅在 IBKR 掉线时用的兜底净值（2026-08-22 同步）；正常每次从 IBKR 取
-  total_assets_usd: 250000        # 总资产(Schwab 100k + IBKR 150k); 单票硬顶基数
+  total_assets_usd: 250000        # 【已弃用于硬顶】总资产参考值；硬顶改由 risk.single_name_hard_cap_usd 决定
   schwab_core: { instrument: QQQ, target_usd: 100000, note: "被动长期；D1 已定(2026-06-27)=立即30%+手动月定投30%x6+回调子弹40%(674/636 整数股GTC)，见 QQQ建仓方案_2026-06.md" }
 
 strategy: momentum_mainline + serenity_chokepoint   # 跟热点、不强行分散
@@ -42,7 +42,10 @@ benchmark: SPY
 
 risk:                              # 移植 ai-hedge-fund risk_manager
   hist_window_days: 380                       # 取约1年日线给 EWMA波动率+长窗相关性（见 risk.py）
-  single_name_hard_cap_pct_of_total: 12     # 后备硬顶
+  # 单票硬顶：**固定 $30,000 绝对上限**（用户 2026-08-28 拍板，基于全体财富风险承受能力）。
+  # 这是唯一权威值。它不是任何东西的百分比，也不随嘉信侧估值漂移。
+  single_name_hard_cap_usd: 30000
+  single_name_hard_cap_pct_of_total: 12     # 【已弃用】仅在缺 single_name_hard_cap_usd 时回退一个迁移周期
   # 波动率→上限 与 相关性→乘数 见 risk.py（与源码一致）
   no_chase_bias_threshold_pct: 5.0            # ZhuLinsen 默认；强趋势放宽 1.5x
   dilution_atm_disqualifier: true            # Serenity #7（需人工/SEC 复核）
@@ -69,7 +72,19 @@ risk:                              # 移植 ai-hedge-fund risk_manager
   # B48 持仓体检（2026-08-23 用户拍板）：执行止损改用 20 日收盘低×0.99；200日线降级为趋势旗标
   high_conviction_rs: 20                     # RS(vs200−SPY) ≥ 此值 = 已证明相对领先 → 用高风险档
   risk_pct_high: 2.0                         # 高信念票单笔风险%（路线乙）
-  risk_pct_base: 1.0                         # 其余持仓单笔风险%
+  risk_pct_base: 1.0
+  # R7 (2026-08-28): noise floor for trade instructions. A position below BOTH thresholds
+  # cannot produce an order. The 2026-08-28 brief proposed taking $59 of profit on a
+  # 0.741-share, $179 MRVL stub -- arithmetically correct, operationally noise.
+  min_decision_pct_nav: 0.25      # position smaller than this share of NAV ...
+  min_decision_usd: 200           # ... AND an instruction smaller than this -> suppressed
+  # Red line v2: leveraged ETFs, 2x long only, combined ceiling as % of NAV.
+  leveraged_etf_max_pct_nav: 5
+  # 红线 v2 ④：杠杆 ETF 硬止损 = max(成本×0.85, 20日低×0.99)，下跌中先触及者，无条件执行。
+  leveraged_etf_hard_stop_pct: 15
+  # 外部世界事实的有效期。holdings[].role 里「核实 YYYY-MM-DD，源=…」超过此天数即视为过期：
+  # 过期只能产生警告，不能单独触发清仓（用户 2026-08-28 约束 4）。
+  fact_expiry_days: 180                         # 其余持仓单笔风险%
 
 data:
   primary: FMP                                # Starter 年付档（2026-07-18 由 Ultimate 降级；batch-quote 走单票 fallback，见 B31）

@@ -8,6 +8,14 @@ from __future__ import annotations
 import os, sys, json, datetime as dt, pathlib, yaml
 from . import fmp, ibkr, risk, screener, scanner, crossval, llm, notify, calendars
 from .memory import ReflectionMemory
+from .ledger import performance as ledger
+from .domain import policy
+from .rules import account as r_account, thesis as r_thesis, \
+                   concentration as r_conc, sizing as r_sizing, \
+                   exit as r_exit, profit as r_profit
+from .engine.resolve import total_sell_value
+from .engine import pipeline
+from .render import action_list
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 try:
@@ -16,10 +24,21 @@ except Exception:
     CFG = {}
 
 def _theme_of() -> dict:
+    """Ticker -> layer for EVERY name the system knows, risk.theme_overrides included.
+
+    R5 (2026-08-28): this map is what `risk.position_caps()` and `_corr_universe()` receive.
+    It used to be built from config.subthemes ONLY, so all seven theme_overrides names were
+    themeless to the risk engine -- SKHY (31% of NAV) and MU (24.5%) are both memory_hbm and
+    the >=0.60 same-theme correlation floor never applied to the most concentrated pair in
+    the book. Overrides win, exactly as in cockpit.rules.concentration.layer_of.
+    """
     out = {}
     for name, v in CFG.get("subthemes", {}).items():
         for s in v.get("names", []):
             out.setdefault(s, name)
+    for t, layer in ((CFG.get("risk", {}) or {}).get("theme_overrides", {}) or {}).items():
+        if layer:
+            out[t] = layer                    # override wins over any subthemes membership
     return out
 
 def _universe() -> list:
@@ -58,15 +77,16 @@ def _corr_universe(holdings, theme_of):
             peers |= set(v.get("names", []))
     return hold | peers
 
-def _append_nav(date_str, net_liq):
-    p = ROOT / "state" / "nav_history.json"
+def _append_nav(date_str, net_liq, run_date=None):
+    """R3 (2026-08-28): file NAV under the Flex `as_of`, not the run date.
+
+    The brief titled 2026-08-28 carried portfolio data stamped as_of=20260827 and wrote
+    159,528.31 -- the broker's 08-27 net liquidation value -- into nav_history under
+    "2026-08-28". nav_history has no 2026-08-27 entry at all, so every window computed from
+    it is shifted by a trading day. Delegates to the ledger so there is one implementation.
+    """
     try:
-        d = json.load(open(p, encoding="utf-8")) if p.exists() else {"navs": {}}
-    except Exception:
-        d = {"navs": {}}
-    d.setdefault("navs", {})[date_str] = round(float(net_liq), 2)
-    try:
-        json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        ledger.append_nav_at_as_of(date_str, net_liq, run_date=run_date)
     except Exception:
         pass
 
@@ -201,20 +221,21 @@ def _holdings_snapshot(holdings, quotes, setups, positions, net_liq, dilution, d
 def _candidates_md(candidates, subs):
     """Deterministic 选股雷达 table appended to the email so the LLM can never drop it."""
     L = ["", "---", "## 📡 选股雷达 / 观察池（系统直出 · 未持有 · 不经 LLM，保证显示）", "",
-         "| 候选 | 子板块 | 评分 | 形态 | vs50 | vs200 | 距高 | 等待价(−20%/50日) | 1%风险示例股数 |",
-         "|---|---|---|---|---|---|---|---|---|"]
+         "| 候选 | 子板块 | 评分 | 形态 | vs50 | vs200 | 距高 | 等待价(−20%/50日) |",
+         "|---|---|---|---|---|---|---|---|"]
     for c in (candidates or [])[:10]:
-        sz = (c.get("size_1pct_stop8") or {}).get("shares", "-")
         wait = "%s/%s" % (c.get("wait_20pct") or "-", c.get("wait_ma50") or "-")
-        L.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+        L.append("| %s | %s | %s | %s | %s | %s | %s | %s |" % (
             c.get("ticker"), c.get("subtheme"), c.get("score"), c.get("posture"),
-            c.get("vs50"), c.get("vs200"), c.get("off_high"), wait, sz))
+            c.get("vs50"), c.get("vs200"), c.get("off_high"), wait))
     if subs:
         lead = ", ".join("%s(%+.0f,%s%s)" % (r["subtheme"], r["rel_vs_spy"], r["lifecycle"],
                          "·过热" if r.get("overheated") else "") for r in subs[:3])
         lag = ", ".join("%s(%+.0f)" % (r["subtheme"], r["rel_vs_spy"]) for r in subs[-2:])
         L += ["", "**板块强弱（相对 SPY）** — 领先: " + lead, "落后: " + lag]
-    L.append("> Serenity 14 点/VCP 需人工对基本面+盘面确认；示例股数 = 1%风险、止损设入场−8%、与 $30k 硬顶取 min。")
+    L.append("> 本表是**观察池**：评分、形态与等待价，**不含任何可执行数字**。"
+             "股数、金额、目标仓位与止损只出现在首屏行动清单里，且只来自统一裁决（Decision）。"
+             "Serenity 14 点 / VCP / 稀释仍需人工核实；未核实的候选只会以「观察」出现。")
     return "\n".join(L)
 
 def _opens_and_violations(prev, positions, exclude, setups, mem, today):
@@ -467,75 +488,44 @@ def _position_audit(snapshot, caps, net_liq, theme_of, hard_cap_usd):
     return rows, {"total_risk_usd": round(tot_risk), "total_cut_usd": round(tot_cut),
                   "total_risk_pct_nav": round(tot_risk / net_liq * 100, 1) if net_liq else None}
 
-def _audit_md(rows, tot, budget_hi=8.0):
-    """B48 rendering. Code-rendered, never handed to the LLM (B22 lesson)."""
+def _audit_md(rows, tot, budget_hi=8.0, sell_total=None):
+    """B48 table, R10 (2026-08-28): DIAGNOSTIC ONLY.
+
+    The 目标仓位$ and 该减$ columns are gone. They were a second, independently computed
+    answer to "how much do I sell", and on 2026-08-28 they disagreed with the action list
+    on SKHY (40,154 vs 35,911) and ORCL (14,630 vs 9,056) inside one email. The appendix
+    may explain the arithmetic; it may not produce a rival instruction. The one number to
+    sell is the action list's, restated here verbatim so the reader can check they match."""
     if not rows:
         return ""
-    L = ["## 🩺 持仓体检（B48 · 规则直出 · 止损=20日低×0.99）", "",
-         "| 票 | 层(排名) | 现仓$ | 净值% | RS | 止损价 | 距止损% | 在险$ | 在险%净值 | 风险档 | 目标仓位$ | 该减$ |",
-         "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    L = ["## 🩺 持仓体检（诊断表 · 不产生交易金额）", "",
+         "| 票 | 层(排名) | 现仓$ | 净值% | RS | 止损价 | 距止损% | 在险$ | 在险%净值 |",
+         "|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         flags = ("🔻" if r["weakest"] else "") + ("📉" if r["below_200dma"] else "") + ("🚨" if r.get("near_stop") else "")
-        L.append("| %s%s | %s(%s) | %s | %s | %s | %s | %s | %s | %s%% | %.0f%% | %s | %s |" % (
+        L.append("| %s%s | %s(%s) | %s | %s | %s | %s | %s | %s | %s%% |" % (
             r["ticker"], flags, r["layer"], r["rank"],
             format(int(r["mv"] or 0), ","), r["pct_nav"], r["rs"],
             r["stop"] if r["stop"] else "-", r["dist_pct"],
             format(int(r["risk_usd"]), ",") if r["risk_usd"] else "-",
-            r["risk_pct_nav"], r["tier_pct"],
-            format(int(r["target_usd"]), ",") if r["target_usd"] else "-",
-            ("**" + format(int(r["cut_usd"]), ",") + "**") if r["cut_usd"] else "—"))
+            r["risk_pct_nav"]))
     flag = "🔴" if (tot["total_risk_pct_nav"] or 0) > budget_hi else "🟢"
-    L += ["", "%s **组合总在险 $%s = 净值 %.1f%%**（预算 6-8%%）｜ 按风险档该减仓合计 **$%s**" % (
-        flag, format(tot["total_risk_usd"], ","), tot["total_risk_pct_nav"] or 0,
-        format(tot["total_cut_usd"], ",")),
-        "> 🔻=本层 RS 最弱（同层重复持有时优先处理）｜📉=跌破200日线（趋势旗标，与执行止损分开）｜🚨=距止损<5%（即将触发）",
-        "> ⚠️ **在险$ 小 ≠ 安全**：止损近在咫尺同样让在险金额变小（见 🚨 行）。两者要一起读。",
-        "> 本表只回答「该减多少」，**从不建议加仓**（目标仓位以现仓为上限）；买入一律走行动清单的等待价+闸门。",
-        "> 目标仓位 = min(按风险档反推, vol×corr 上限, $30k 硬顶)。风险档：RS≥%s 用 2%%，其余 1%%。" % (
-            (CFG.get("risk", {}) or {}).get("high_conviction_rs", 20)),
-        "> **止损位不是问题，仓位才是**：能扛住波动的止损必然离得远，仓位不缩就必然超预算。", ""]
+    L += ["", "%s **组合总在险 $%s = 净值 %.1f%%**（预算 6-8%%）——**警示口径，不产生卖出金额**" % (
+        flag, format(tot["total_risk_usd"], ","), tot["total_risk_pct_nav"] or 0)]
+    if sell_total is not None:
+        L.append("本日唯一卖出总额见首屏行动清单：**$%s**（本表不重算）。" % format(int(sell_total), ","))
+    L += ["> 🔻=本层 RS 最弱（**复查候选，不是清仓依据**）｜📉=跌破200日线（趋势旗标，与执行止损分开）｜🚨=距止损<5%",
+          "> ⚠️ **在险$ 小 ≠ 安全**：止损近在咫尺同样让在险金额变小（见 🚨 行）。两者要一起读。",
+          "> **止损位不是问题，仓位才是**：能扛住波动的止损必然离得远，仓位不缩就必然超预算。",
+          "> 参考口径（不驱动指令）：按风险档反推的仓位与 vol×corr 上限见每条决策的「参考口径」行。", ""]
     return "\n".join(L) + "\n---\n\n"
 
-def _dispose_order(rows, snapshot, cash):
-    """B48b sell sequencing: order by REASON HARDNESS (not by size), then project the cash ladder
-    so 'what do I sell first and where does the money go' has one answer, not a paragraph."""
-    def hardness(r):
-        if r["layer"] == OUTSIDE_LAYER:    return (1, "体系外/无框架容纳")
-        if r["weakest"] and (r["rs"] or 0) < 0:  return (2, "本层最弱且 RS 为负")
-        if r["below_200dma"]:              return (3, "跌破200日线（趋势失效）")
-        if r["weakest"]:                   return (4, "本层最弱")
-        if r["cut_usd"]:                   return (5, "超出风险档尺寸")
-        return (9, "")
-
-    def amount(h, r):
-        """B53: hardness 1-2 (outside the framework / weakest in its layer with negative RS) = EXIT
-        the whole position; 3-5 = only cut down to size. The old filter keyed on cut_usd, so a name
-        already small enough but carrying the HARDEST reason (CCXI the SPAC shell; AVGO/GLW/RAM
-        weakest in their layer) never reached the ladder at all. Caught by smoke test 2026-08-24."""
-        return (r["mv"] or 0) if h <= 2 else (r["cut_usd"] or 0)
-
-    cand = [(hardness(r), r) for r in rows if hardness(r)[0] <= 5 and amount(hardness(r)[0], r) > 0]
-    if not cand:
-        return ""
-    cand.sort(key=lambda x: (x[0][0], -amount(x[0][0], x[1])))
-    L = ["## 🪜 处置排序与现金推演（B48b · 按理由硬度，不按金额）", ""]
-    run = cash or 0.0
-    for i, ((_h, why), r) in enumerate(cand[:8], 1):
-        amt = amount(_h, r)
-        run += amt
-        note = "清仓" if _h <= 2 else "减仓"
-        L.append("%d. **%s %s $%s** —— %s ｜ 执行后现金 $%s%s" % (
-            i, r["ticker"], note, format(int(amt), ","), why, format(int(run), ","),
-            "  ← **现金转正，利息停止**" if (run >= 0 and run - amt < 0) else ""))
-    ump = [r["ticker"] for r in rows if r["layer"] == "unmapped"]
-    if ump:
-        L += ["", "> ⚠️ **未归类持仓（config.subthemes / risk.theme_overrides 缺失）**："
-              + ", ".join(ump) + " —— 它们的层内排名与 B36 主题敞口都失效。"
-              "**请补 config；「未归类」不等于「体系外」。**"]
-    L += ["", "> 顺序原则：理由越硬越先做（体系外 > 层内最弱且RS负 > 趋势失效 > 层内最弱 > 超尺寸）；"
-          "硬度 1-2 给整只清仓金额，3-5 只给该减金额；"
-          "同级按金额降序。所得按 B46 优先级：还保证金 → 热度回预算 → 等待价分批 → 弹药。", ""]
-    return "\n".join(L) + "\n---\n\n"
+# R10 (2026-08-28): _dispose_order() DELETED. It produced its own ordered sell list with its
+# own amounts (hardness 1-2 => whole position, 3-5 => cut amount) and on 2026-08-27 data it
+# totalled 109,543 while the action plan totalled 72,858 and the audit table 86,442 -- three
+# answers, one book. Ordering the sells is now the action list's job, driven by the binding
+# rule's tier. The historical output is preserved in tests/fixtures/brief_20260828_observed.json
+# so the defect stays demonstrable without keeping the code that caused it.
 
 def _lamps_md(heat_pct, cash, earn):
     """B42 status lamps: heat / cash-margin / earnings window. One glance, code-rendered."""
@@ -611,113 +601,176 @@ def _snapshot_md(snapshot, net_liq, cash):
     L += ["", "净值 $%s ｜ 现金 $%s" % (format(int(net_liq), ","), format(round(cash or 0), ","))]
     return "\n".join(L) + "\n"
 
-_MKT_ZONE_CN = {"high": ("高位/拥挤", "QQQ 定投：本月正常 1x，不加码；D1 回调子弹留好别动"),
-                "neutral": ("中性", "QQQ 定投：本月正常 1x"),
-                "deep_pullback": ("深度回调/恐慌", "QQQ 定投：符合 D1 子弹条件——核对 −10%/−15% GTC 挂单在位，可评估当月加投")}
+# R6 (2026-08-28): the Schwab side is 100% user-managed and explicitly OUT OF SCOPE here.
+# These three strings used to carry monthly dollar-cost-averaging guidance for that other
+# account, printed at the top of the IBKR action list -- advice this system has no business
+# giving and no data to support. (The exact removed wording is preserved in
+# tests/fixtures/brief_20260828_observed.json, not here: quoting it in a comment would defeat
+# the source-level guard that keeps it out.) The market-position score stays, because it gates
+# IBKR buying; the instruction attached to it is now about THIS account.
+_MKT_ZONE_CN = {"high": ("高位/拥挤", "新开仓从严：只接受支撑区形态，不追 extended"),
+                "neutral": ("中性", "常规节奏"),
+                "deep_pullback": ("深度回调/恐慌", "支撑区候选优先，仍受热度与现金闸门约束")}
 
-def _action_plan(snapshot, caps, heat_pct, candidates, cash, hard_cap_usd, violations=None, mkt=None,
-                 theme_alerts=None, profit_takes=None, reentries=None):
-    """B32: deterministic TODAY-action list, code-rendered at the TOP of the email.
-    Order: risk-off first (over-cap TRIM / broken-down), then a heat gate (>=6% -> no new buys),
-    then at most 2 buyable-on-support candidates with 1%-risk sizing. Explicit "do nothing"
-    when no rule fires. Prompts only -- the user executes manually (red line)."""
-    L = ["## ✅ 今日行动清单（规则直出 · 提示非指令 · 手动执行）", ""]
+# R10 (2026-08-28): _action_plan() DELETED. It rendered sells straight from
+# risk.position_caps() actions ("TRIM $X"), which was the THIRD independent sizing path. Its
+# job now belongs to cockpit/render/action_list.py, which may only read Decision fields.
+
+
+def _staleness(as_of_label, today, earn, phase):
+    """Say out loud how old the data is. Never dress a lagged snapshot as a live conclusion.
+
+    Two independent lags, and they are NOT the same thing:
+      * positions/NAV come from the IBKR Flex statement, whose reportDate can be the previous
+        trading day even on a post-close run;
+      * prices are FMP end-of-day closes and exclude after-hours entirely, so an earnings move
+        that happened after the close is invisible until the next session.
+    """
+    out = []
+    try:
+        d0 = dt.date.fromisoformat(ledger.normalize_date(as_of_label))
+        d1 = dt.date.fromisoformat(today)
+        lag = calendars.trading_days_between(d0, d1) if hasattr(calendars, "trading_days_between") \
+            else (d1 - d0).days
+    except Exception:
+        d0 = d1 = None
+        lag = 0
+    if lag and lag > 0:
+        out.append("持仓数据滞后 %d 个日历日（Flex 期末日 %s，本次运行 %s）——"
+                   "股数、成本、净值都是那一天的，**不是实时的**" % (lag, as_of_label, today))
+    out.append("价格为 FMP 收盘价，**不含盘后与隔夜**")
+    soon = []
+    for tk, e in (earn or {}).items():
+        ed = str((e or {}).get("date", ""))[:10]
+        if not ed or not d0:
+            continue
+        try:
+            edd = dt.date.fromisoformat(ed)
+        except Exception:
+            continue
+        if d0 <= edd <= (d1 or d0):
+            soon.append("%s（%s）" % (tk, ed))
+    if soon:
+        out.append("⚠️ 以下标的在本表数据时点之后发布财报，**盘后波动完全不反映在本表价格里**，"
+                   "任何基于价格的判断对它们降级为参考：" + "、".join(soon))
+    if phase == "intraday":
+        out.append("⚠️ 盘中快照：未收盘，勿当收盘复盘")
+    return out
+
+
+def _decision_inputs(snapshot, closes):
+    """Flatten the holdings snapshot into the shape the rule modules expect.
+
+    One place, one vocabulary. Rules never read the snapshot's field names directly, so a
+    rename in the snapshot cannot silently change what a rule sees.
+    """
+    pos, low10 = {}, {}
+    for t, d in (snapshot or {}).items():
+        mv, px = d.get("market_value"), d.get("price")
+        if mv is None and d.get("shares") and px:
+            mv = d["shares"] * px
+        pos[t] = {"shares": d.get("shares"), "price": px, "market_value": mv,
+                  "cost_price": d.get("avg_cost"), "unreal_pnl_pct": d.get("unreal_pnl_pct"),
+                  "rs": d.get("rs_vs_spy"), "stop_level": d.get("stop_review_level"),
+                  "dist_to_stop_pct": d.get("dist_to_stop_pct"),
+                  "below_200dma": d.get("below_200dma"),
+                  "already_broken_down": d.get("already_broken_down")}
+        lows = (closes.get(t) or [])[:10]
+        if lows:
+            low10[t] = round(min(lows), 2)
+    return pos, low10
+
+
+def _build_decisions(snapshot, caps, net_liq, cash, as_of, closes,
+                     candidates=None, reentries=None, heat_pct=None):
+    """Ordered, portfolio-level adjudication. See cockpit/engine/pipeline.py.
+
+    The rules are NOT pre-collected here any more. The pipeline calls each tier against the
+    book the tiers above it have already left behind, because a ceiling that sizes itself
+    against exposure another ticker is already giving up over-sells: on 2026-08-28 that shape
+    produced a $70,000 instruction where $60,000 was the whole requirement."""
+    pos, low10 = _decision_inputs(snapshot, closes)
+    layers = r_conc.theme_map(list(pos), CFG)
+    ctx = pipeline.Context(net_liq=net_liq, cash=cash, as_of=as_of, cfg=CFG, layers=layers,
+                           caps=caps, low10=low10,
+                           stops={t: d.get("stop_level") for t, d in pos.items()},
+                           candidates=candidates or [], reentries=reentries or [],
+                           heat_pct=heat_pct)
+    decisions, props, trace = pipeline.adjudicate(pos, ctx)
+    reasons = {}
+    for p in props:
+        reasons.setdefault(p.rule_id, p.reason)
+    portfolio_flags = [p.reason for p in props if p.ticker == "__portfolio__"]
+    return decisions, reasons, layers, portfolio_flags
+
+def _cash_routing_md(sell_total, cash):
+    """B46 卖出所得流向. Kept, but it no longer computes anything: the amount is the action
+    list's single total, passed in. Previously this line lived inside _action_plan() and summed
+    the risk-engine TRIM actions itself, which is how the email ended up with a 72,858 total
+    sitting above an 86,442 one."""
+    if not sell_total:
+        return ""
+    L = ["**\U0001F4B8 卖出所得流向（规则=资金优先级 B46）：**"]
+    if (cash or 0) < -100:
+        L.append("- 执行上面的决策共 **$%s** → ① 优先偿还保证金负债（当前 $%s，先停利息）；"
+                 "② 负债清零前不开新仓、不补杠杆产品（红线 v2 ③）；③ 现金转正后：等回调候选到价分批 → 余款留作弹药。"
+                 "　执行后现金 ≈ $%s。"
+                 % (format(int(sell_total), ","), format(round(cash), ","),
+                    format(int((cash or 0) + sell_total), ",")))
+    else:
+        L.append("- 执行上面的决策共 **$%s** → ① 等回调候选到价分批；② 其余留作现金弹药。"
+                 % format(int(sell_total), ","))
+    return "\n".join(L) + "\n\n"
+
+
+def _followups_md(candidates, reentries, heat_pct, mkt, theme_alerts, may_buy):
+    """Everything that is NOT an adjudicated position decision: buy candidates, wait prices,
+    re-entry prompts, theme lamp. None of these may print a sell amount -- the action list
+    above is the only place a number to sell appears."""
+    L = []
     if mkt:
         zone_cn, hint = _MKT_ZONE_CN.get(mkt.get("zone"), ("?", ""))
-        L.append("📍 **市场位置 %s/100（%s）** · %s（B39）" % (mkt.get("score"), zone_cn, hint))
-        L.append("　↳ QQQ 距52周高 %s%% · vs200日 %s%% · VIX %s；规则透明：%s（估值分位待接入）" % (
-            mkt.get("off_high_pct"), mkt.get("vs200_pct"), mkt.get("vix"), mkt.get("rule")))
-        L.append("")
-    if violations:
-        L += ["**⛔ 纪律违规检测（上一交易日，B37）：**"] + [
-            "- ⛔ " + v + "（规则=利弗莫尔/L1：只在浮盈中加仓，绝不亏损补仓）" for v in violations] + [""]
+        L += ["\U0001F4CD **市场位置 %s/100（%s）** · %s" % (mkt.get("score"), zone_cn, hint),
+              "　↳ QQQ 距52周高 %s%% · vs200日 %s%% · VIX %s（该指数只用作本账户的开仓闸门）" % (
+                  mkt.get("off_high_pct"), mkt.get("vs200_pct"), mkt.get("vix")), ""]
     if theme_alerts:
-        L += ["**🟣 主题集中警戒（B36 · 杠杆产品按倍数折算）：**"] + [
-            "- 🟣 **%s** 合计 $%s = **%.1f%% 净值**（警戒线 %.0f%%）→ 该主题只减不加（规则=主题聚合敞口）" % (
-                a["subtheme"], format(a["usd"], ","), a["pct"], a["threshold"]) for a in theme_alerts] + [""]
-    sells = []
-    for tkr, d in sorted(snapshot.items()):
-        c = caps.get(tkr, {})
-        act = str(c.get("action", ""))
-        if act.startswith("TRIM"):
-            over_hard = (c.get("current_usd") or 0) > hard_cap_usd
-            why = "超风控上限" + ("+超$%dk硬顶" % int(hard_cap_usd / 1000) if over_hard else "")
-            sells.append("- 🔴 **%s：减仓 %s**（%s；规则=vol×corr 动态上限）" % (tkr, act.replace("TRIM ", ""), why))
-        if d.get("already_broken_down"):
-            sells.append("- 🔴 **%s：已破位（无有效止损位）→ 按纪律评估减仓/清仓**（规则=破位纪律/L1）" % tkr)
-    if sells:
-        L += ["**先卖/减（风险优先）：**"] + sells + [""]
-    trim_total = 0.0
-    for tkr in snapshot:
-        act = str((caps.get(tkr) or {}).get("action", ""))
-        if act.startswith("TRIM"):
-            try: trim_total += float(act.replace("TRIM $", "").replace(",", ""))
-            except Exception: pass
-    if sells or (cash or 0) < -100:
-        L.append("**💸 卖出所得流向（规则=资金优先级 B46）：**")
-        if (cash or 0) < -100:
-            L.append("- 建议减仓合计 ≈ $%s（破位票清仓另计）→ ① 优先偿还保证金负债（当前 $%s，先停利息）；"
-                     "② 负债清零前不开新仓、不补杠杆产品（红线v2③）；③ 现金转正后：热度回预算内 → 等回调候选到价分批 → 余款留作弹药。"
-                     % (format(round(trim_total), ","), format(round(cash), ",")))
-        else:
-            L.append("- 建议减仓合计 ≈ $%s → ① 热度回到预算内前不开新仓；② 等回调候选到价分批；③ 其余留作现金弹药。"
-                     % format(round(trim_total), ","))
-        L.append("")
-    if profit_takes:
-        L.append("**💰 止盈阶梯（B45）：**")
-        for p in profit_takes:
-            tr = ("或将止损上移至 10 日低 $%s" % p["low10"]) if p.get("low10") else "或改用移动止损"
-            L.append("- 💰 **%s：浮盈 %.1f%% ≥ +%.0f%% → 建议止盈减 %d%% ≈ $%s**，%s（规则=止盈阶梯：锁一部分，余仓不封顶）" % (
-                p["ticker"], p["pnl_pct"], p["trigger"], round(p["frac"] * 100),
-                format(p["trim_usd"], ","), tr))
-        L.append("")
-    if heat_pct is not None and heat_pct >= 6.0:
-        L.append("**买入：今天不开新仓** —— 组合热度 %.1f%% 已达预算(6-8%%)上限；先执行减仓释放风险预算（规则=热度闸门）。" % heat_pct)
-    else:
-        buys = []
-        for c in (candidates or []):
-            if c.get("posture") != "buyable-on-support":
-                continue
-            sz = c.get("size_1pct_stop8") or {}
-            if not sz.get("shares"):
-                continue
-            buys.append("- 🟢 **%s**（%s·评分%s）：示例 %s 股 ≈ $%s，止损=入场−8%%（规则=支撑区+1%%风险；买前人工核 Serenity14/VCP/稀释）"
-                        % (c.get("ticker"), c.get("subtheme"), c.get("score"), sz.get("shares"), sz.get("position_value")))
-            if len(buys) >= 2:
-                break
-        if buys:
-            L += ["**可考虑买（形态在支撑区，至多两名）：**"] + buys
-            if (cash or 0) < 2000:
-                L.append("- ⚠️ 现金仅 $%.0f：任何买入以先完成上面的卖出为前提。" % (cash or 0))
-        elif not sells:
-            L.append("**今天不动**：无超限、无破位、无支撑区候选（规则=不追 extended）。")
-        else:
-            L.append("**买入：暂无支撑区候选**（规则=不追 extended）。")
-    waits = [c for c in (candidates or []) if c.get("posture") == "extended/wait-pullback" and c.get("wait_20pct")][:2]
-    if waits:
-        L.append("")
-        L.append("**等回调候选（到价再谈，B38）：**")
-        for c in waits:
-            L.append("- ⏳ **%s**：等 $%s（52周高−20%%）/ $%s（−25%%）/ 回踩50日线 $%s" % (
-                c.get("ticker"), c.get("wait_20pct"), c.get("wait_25pct"), c.get("wait_ma50")))
+        L += ["**\U0001F7E3 主题集中（已计入上面的决策，此处只作说明）：**"] + [
+            "- \U0001F7E3 **%s** 合计 $%s = **%.1f%% 净值**（上限 %.0f%%）" % (
+                a["subtheme"], format(a["usd"], ","), a["pct"], a["threshold"])
+            for a in theme_alerts] + [""]
     if reentries:
-        L.append("")
-        L.append("**🔁 再入场观察（B44 · 止损/清仓后的回场规则）：**")
-        gate = "（⚠️ 当前热度超预算：先完成减仓再执行）" if (heat_pct is not None and heat_pct >= 6.0) else ""
+        L += ["**\U0001F501 再入场观察（B44 · 状态，不是订单）：**"]
         for r in reentries:
-            L.append("- 🔁 **%s**：%s 离场后已收盘重新站上 50 日线（$%s > $%s）→ 若再入场按 1%% 风险 %s 股 ≈ $%s，止损=入场−8%%%s" % (
-                r["ticker"], r.get("exit_date") or "?", r["price"], r["ma50"],
-                r.get("shares") or "-",
-                format(int(r["value"]), ",") if r.get("value") else "-", gate))
-    L += ["", "---", ""]
-    return "\n".join(L)
+            L.append("- \U0001F501 **%s**：%s 离场后已收盘重新站上 50 日线（$%s > $%s）。"
+                     "是否买、买多少，只由首屏行动清单里的 Decision 决定。" % (
+                         r["ticker"], r.get("exit_date") or "?", r["price"], r["ma50"]))
+        L.append("")
+    if may_buy:
+        # NO share counts, NO dollar amounts, NO stops here. A buy that is executable is a
+        # Decision and appears in the action list; anything that is not executable yet is an
+        # observation and must not be dressed in numbers that look like an order.
+        watch = [c for c in (candidates or []) if c.get("posture") == "buyable-on-support"][:2]
+        if watch:
+            L += ["**形态在支撑区的候选（观察；可执行与否见首屏 Decision）：**"] + [
+                "- \U0001F7E2 **%s**（%s·评分%s）——买前须人工核 Serenity14 / VCP / 稀释"
+                % (c.get("ticker"), c.get("subtheme"), c.get("score")) for c in watch] + [""]
+    waits = [c for c in (candidates or [])
+             if c.get("posture") == "extended/wait-pullback" and c.get("wait_20pct")][:2]
+    if waits:
+        L += ["**等回调候选（到价再谈，B38）：**"] + [
+            "- \u23F3 **%s**：等 $%s（52周高−20%%）/ $%s（−25%%）/ 回踩50日线 $%s" % (
+                c.get("ticker"), c.get("wait_20pct"), c.get("wait_25pct"), c.get("wait_ma50"))
+            for c in waits] + [""]
+    return ("\n".join(L) + "\n---\n\n") if L else ""
+
 
 def build() -> str:
     today = dt.date.today().isoformat()
     phase = calendars.market_phase()
     exclude = set(CFG.get("exclude", []))
     cfg_holdings = [h["ticker"] for h in CFG.get("holdings", [])]
-    theme_of = _theme_of()
+    theme_map = _theme_of()          # R5: overrides included
+    theme_of = theme_map
     bench = CFG.get("benchmark", "SPY")
 
     mem = ReflectionMemory(str(ROOT / "state" / "reflection_memory.json"))
@@ -730,7 +783,7 @@ def build() -> str:
         holdings = sorted({t for t in positions if t not in exclude})
         cur_mv = {t: p["mv"] for t, p in positions.items() if t not in exclude}
         port_note = ""
-        _append_nav(today, net_liq)
+        _append_nav(as_of or today, net_liq, run_date=today)   # R3: as_of, not run date
         closed, trimmed_out, prev_pos = _reflect_on_closes(positions, exclude, mem, today)
         drift_extra = sorted(set(holdings) - set(cfg_holdings))   # held, not yet annotated in config
         drift_gone = sorted(set(cfg_holdings) - set(holdings))    # stale config entries (can delete)
@@ -745,15 +798,14 @@ def build() -> str:
     if bench in quotes and quotes[bench].get("priceAvg200"):
         bench_vs200 = round((quotes[bench]["price"] / quotes[bench]["priceAvg200"] - 1) * 100, 1)
 
-    total_assets = CFG["account"].get("total_assets_usd", 250000)
-    hard_cap_usd = total_assets * CFG["risk"]["single_name_hard_cap_pct_of_total"] / 100.0
+    hard_cap_usd = policy.hard_cap_usd(CFG)   # fixed $30,000; see cockpit/domain/policy.py
     closes = _hist_window(_corr_universe(holdings, theme_of))
     # B24: risk-table MV on the SAME price basis as the snapshot -- shares x FMP
     # current price; Flex prior-day mv only when no live quote (fail-open).
     cur_mv = {t: ((positions.get(t, {}).get("shares") or 0) * quotes[t]["price"])
                  if (positions.get(t, {}).get("shares") and quotes.get(t, {}).get("price")) else mv
               for t, mv in cur_mv.items()}
-    caps = risk.position_caps(closes, net_liq, cur_mv, cash, set(holdings), hard_cap_usd, theme_of)
+    caps = risk.position_caps(closes, net_liq, cur_mv, cash, set(holdings), hard_cap_usd, theme_map)
 
     setups = {t: screener.name_setup(t, quotes[t], CFG["risk"]["no_chase_bias_threshold_pct"], bench_vs200)
               for t in holdings if t in quotes}
@@ -766,7 +818,8 @@ def build() -> str:
     portfolio_heat_pct = round(heat_usd / net_liq * 100, 1) if net_liq else None
     broken = [t for t, d in holdings_snapshot.items() if d["already_broken_down"]]
     opened, violations = _opens_and_violations(prev_pos, positions, exclude, setups, mem, today)
-    _append_signal_log(today, net_liq, portfolio_heat_pct, holdings_snapshot, caps)
+    _append_signal_log(ledger.normalize_date(as_of) or today, net_liq,   # R3: as_of
+                       portfolio_heat_pct, holdings_snapshot, caps)
 
     xval = {t: crossval.verify_price(t, quotes[t]["price"]) for t in holdings if t in quotes}
     edgar = {t: crossval.edgar_dossier(t) for t in holdings}    # B17: SEC EDGAR deep check
@@ -782,9 +835,11 @@ def build() -> str:
     candidates = screener.rank_candidates(CFG["subthemes"], quotes, bench_vs200,
                                           set(holdings) | exclude, top=10)
     maxpos_pct = round(hard_cap_usd / net_liq * 100, 1) if net_liq else None
+    # R25: candidates carry a PRICE for the entry rule to size against; the brief itself no
+    # longer computes an "example" share count. An example share count next to a candidate is
+    # an order in everything but name, and it was being produced outside the Decision layer.
     for c in candidates:
-        q = quotes.get(c["ticker"], {}); px = q.get("price")
-        c["size_1pct_stop8"] = risk.position_size(net_liq, px, px * 0.92, 1.0, maxpos_pct) if px else None
+        c["price"] = (quotes.get(c["ticker"], {}) or {}).get("price")
     mkt = screener.market_position(quotes)
     theme_alerts, _theme_map = _theme_exposure(holdings_snapshot, theme_of, net_liq)   # B36
     pt_trig = float(CFG.get("risk", {}).get("profit_take_trigger_pct", 25))            # B45
@@ -799,9 +854,40 @@ def build() -> str:
                                  "low10": round(min(lows), 2) if lows else None})
     reentries = _reentry_update(closed, quotes, today, net_liq, maxpos_pct, trimmed_out)  # B44 + B50
     audit_rows, audit_tot = _position_audit(holdings_snapshot, caps, net_liq, theme_of, hard_cap_usd)  # B48
-    action_md = _action_plan(holdings_snapshot, caps, portfolio_heat_pct, candidates, cash, hard_cap_usd,
-                             violations=violations, mkt=mkt, theme_alerts=theme_alerts,
-                             profit_takes=profit_takes, reentries=reentries)
+    # R2/R10 (2026-08-28): ONE adjudicated decision per ticker, rendered once.
+    as_of_label = ledger.normalize_date(as_of) or today
+    decisions, dec_reasons, dec_layers, port_flags = _build_decisions(
+        holdings_snapshot, caps, net_liq, cash, as_of_label, closes,
+        candidates=candidates, reentries=reentries, heat_pct=portfolio_heat_pct)
+    sell_total = total_sell_value(decisions)
+    lev_usd = sum((holdings_snapshot.get(t, {}).get("market_value") or 0)
+                  for t in holdings_snapshot if r_conc.leverage_of(t, CFG) > 1.0)
+    # Heat has ONE meaning and one only (user decision 2026-08-28): it is a gate on ADDING
+    # risk, and it never produces a sell amount. The previous wording showed a ⛔ next to the
+    # sentence "this is a warning, not a prohibition" -- the reader could not tell which half
+    # to believe. It does prohibit new buying; what it does NOT do is demand selling.
+    buy_block = None
+    if (cash or 0) < -100:
+        buy_block = ("保证金使用中（现金 $%s）→ **暂停新增风险**：负债清零前不开新仓、不补杠杆产品"
+                     "（红线 v2 ③）" % format(round(cash), ","))
+    elif portfolio_heat_pct is not None and portfolio_heat_pct >= 6.0:
+        buy_block = ("组合在险 %.1f%% 高于 6-8%% 预算 → **暂停新增风险**：今天不开新仓、不加仓。"
+                     "**它不要求你为了把在险打回 6-8%% 而机械卖出**——卖出金额只由上面的绑定规则决定"
+                     "（本次合计 $%s）。" % (portfolio_heat_pct, format(int(sell_total), ",")))
+    action_md = action_list.render(
+        decisions, dec_reasons, as_of=as_of_label, net_liq=net_liq, cash=cash,
+        leverage_pct=(lev_usd / net_liq * 100) if net_liq else 0,
+        risk_usd=heat_usd, risk_pct=portfolio_heat_pct,
+        buying_allowed=(buy_block is None),
+        buying_reason=(buy_block or "无约束阻止新增风险；仍须过形态与现金闸门"),
+        price_note="",
+        staleness=_staleness(as_of_label, today, earn, phase),
+        watch_notes=(["⛔ 纪律违规（B37）：" + v for v in (violations or [])]
+                     + port_flags
+                     + ["本清单只管这个 IBKR 账户；另一个券商账户由你自管，不在本系统职能范围内。"]))
+    action_md += _cash_routing_md(sell_total, cash)
+    action_md += _followups_md(candidates, reentries, portfolio_heat_pct, mkt, theme_alerts,
+                               buy_block is None)
 
     weak = [t for t, s in setups.items() if not s["stage2"]]
     situation = "Holdings " + ",".join(holdings) + "; weak/below-MA: %s; phase %s" % (weak, phase)
@@ -848,7 +934,10 @@ def build() -> str:
                  + "\n\n")
     title = "# 美股投研日报 — %s%s\n\n" % (today, "（盘中快照：未收盘，勿当收盘复盘）" if phase == "intraday" else "")
     lamps = _lamps_md(portfolio_heat_pct, cash, earn)
-    audit_md = _audit_md(audit_rows, audit_tot) + _dispose_order(audit_rows, holdings_snapshot, cash)
+    # R10: the audit table is now DIAGNOSTIC ONLY -- no target, no 该减$. The disposal ladder
+    # is gone entirely: ordering the sells is the action list's job, and a second ordered list
+    # with its own arithmetic is exactly how one book produced three totals.
+    audit_md = _audit_md(audit_rows, audit_tot, sell_total=sell_total)
     return (header + title + drift + action_md + lamps + audit_md + exc_md
             + "## 📰 消息与点评（LLM 附录）\n\n" + body + "\n\n---\n\n"
             + _snapshot_md(holdings_snapshot, net_liq, cash)

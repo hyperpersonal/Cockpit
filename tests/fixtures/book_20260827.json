@@ -1,0 +1,138 @@
+{
+  "_purpose": "The 2026-08-27 book as the decision engine sees it. Position facts come from the IBKR statement (authoritative); the technical signals come from the 2026-08-28 brief, which is the system's own output for that same date.",
+  "_field_sources": {
+    "shares/price/market_value": "IBKR Activity Statement U22209151, Open Positions, 2026-08-27",
+    "rs/stop_level/dist_to_stop_pct/below_200dma": "daily brief 2026-08-28, 🩺 持仓体检 table (system output, FMP-derived)",
+    "already_broken_down": "none breached on this date per the same table",
+    "cost_price": "IBKR Activity Statement, Open Positions, 2026-08-27"
+  },
+  "as_of": "2026-08-27",
+  "net_liq": 159528.31,
+  "cash": -9186.07,
+  "excluded": [
+    "IBKR"
+  ],
+  "positions": {
+    "SKHY": {
+      "shares": 306.1124,
+      "price": 161.61,
+      "market_value": 49470.82,
+      "rs": -4.7,
+      "stop_level": 133.94,
+      "dist_to_stop_pct": 17.1,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 163.175326785
+    },
+    "MU": {
+      "shares": 41.7557,
+      "price": 935.39,
+      "market_value": 39057.86,
+      "rs": 51.2,
+      "stop_level": 814.8,
+      "dist_to_stop_pct": 12.9,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 1077.706119859
+    },
+    "ORCL": {
+      "shares": 164.617,
+      "price": 151.94,
+      "market_value": 25011.91,
+      "rs": -20.1,
+      "stop_level": 128.57,
+      "dist_to_stop_pct": 15.4,
+      "below_200dma": true,
+      "already_broken_down": false,
+      "cost_price": 182.240104303
+    },
+    "AAOI": {
+      "shares": 113.4287,
+      "price": 113.28,
+      "market_value": 12849.2,
+      "rs": 5.7,
+      "stop_level": 93.38,
+      "dist_to_stop_pct": 17.6,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 114.609240959
+    },
+    "CCXI": {
+      "shares": 654.8184,
+      "price": 14.41,
+      "market_value": 9435.93,
+      "rs": 12.7,
+      "stop_level": 13.72,
+      "dist_to_stop_pct": 4.8,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 15.271409304
+    },
+    "KLAC": {
+      "shares": 49.4851,
+      "price": 183.77,
+      "market_value": 9093.88,
+      "rs": -0.5,
+      "stop_level": 179.75,
+      "dist_to_stop_pct": 2.2,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 202.080690046
+    },
+    "GLW": {
+      "shares": 57.5107,
+      "price": 152.8,
+      "market_value": 8787.63,
+      "rs": -0.8,
+      "stop_level": 136.87,
+      "dist_to_stop_pct": 10.4,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 173.880600445
+    },
+    "RAM": {
+      "shares": 413.2232,
+      "price": 12.63,
+      "market_value": 5219.01,
+      "rs": -22.5,
+      "stop_level": 9.88,
+      "dist_to_stop_pct": 21.8,
+      "below_200dma": true,
+      "already_broken_down": false,
+      "cost_price": 12.1000003
+    },
+    "ASX": {
+      "shares": 120.0,
+      "price": 38.9,
+      "market_value": 4668.0,
+      "rs": 33.2,
+      "stop_level": 34.82,
+      "dist_to_stop_pct": 10.5,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 41.780003
+    },
+    "SOXX": {
+      "shares": 8.5838,
+      "price": 525.43,
+      "market_value": 4510.19,
+      "rs": 14.9,
+      "stop_level": 499.84,
+      "dist_to_stop_pct": 4.9,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 582.488781891
+    },
+    "MRVL": {
+      "shares": 0.741,
+      "price": 241.45,
+      "market_value": 178.91,
+      "rs": 54.4,
+      "stop_level": 185.68,
+      "dist_to_stop_pct": 23.1,
+      "below_200dma": false,
+      "already_broken_down": false,
+      "cost_price": 187.000002699
+    }
+  }
+}
