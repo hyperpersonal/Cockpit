@@ -31,7 +31,7 @@
    "exit_date": "2026-08-28",
    "exit_price": 227.98,
    "kind": "full",
-   "prompted": null,
+   "prompted": "2026-09-01",
    "note": "B60: prompt un-spent 2026-08-28 -- the run that stamped it never delivered its email"
   }
  }
