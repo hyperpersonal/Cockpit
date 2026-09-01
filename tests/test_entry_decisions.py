@@ -31,9 +31,12 @@ def verified(when="2026-08-25"):
 def cfg(theme_pct=40, layers=None, leverage=None, cap=30000):
     c = copy.deepcopy(BASE)
     c["subthemes"] = {}
+    # P0A: these fixtures exist to prove a complete BUY Decision CAN be produced, so they
+    # switch buys on EXPLICITLY. Nothing here may rely on a default -- if the production
+    # default ever flipped open, this line is what keeps these tests from hiding it.
     c["risk"].update(theme_overrides=dict(layers or {}), leverage_factors=dict(leverage or {}),
                      theme_exposure_alert_pct=theme_pct, single_name_hard_cap_usd=cap,
-                     leveraged_etf_max_pct_nav=100)
+                     leveraged_etf_max_pct_nav=100, entry_decisions_enabled=True)
     c["holdings"] = [{"ticker": t, "role": "x（核实 2026-08-25，源=FMP profile）"}
                      for t in (layers or {})]
     return c

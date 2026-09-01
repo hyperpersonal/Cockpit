@@ -13,6 +13,10 @@ Sizing. A binding BUY is the MINIMUM of every ceiling that applies:
     available VERIFIED cash
 Never borrowed money: the cash term is the cash the broker statement actually shows.
 
+P0A switch (user, 2026-09-01): `risk.entry_decisions_enabled` gates the whole binding-BUY
+path and fails closed. P0A ships the sell / position-risk / adjudication half only; the buy
+half waits for P0B data and rule acceptance. Production config keeps it false.
+
 Cash gate, conservative by decision (user, 2026-08-28): if verified cash is negative, this
 report produces no BUY at all -- not even against proceeds the same report is proposing to
 raise. A planned sale is not cash until it settles and appears on the next IBKR statement.
@@ -27,7 +31,7 @@ from __future__ import annotations
 import math
 
 from ..domain.models import RuleProposal, BUY, REVIEW, TIER_ENTRY
-from ..domain.policy import hard_cap_usd
+from ..domain.policy import hard_cap_usd, entry_decisions_enabled, P0A_BUY_BLOCK_REASON
 from . import facts
 from .concentration import leverage_of, layer_of
 
@@ -67,8 +71,17 @@ def _theme_headroom(positions, cfg, net_liq):
 
 
 def _gates(cash, heat_pct, cfg):
-    """Reasons this report may not open or add risk at all."""
+    """Reasons this report may not open or add risk at all.
+
+    The P0A switch comes FIRST and it is not a market judgement: it is an acceptance boundary.
+    While `risk.entry_decisions_enabled` is false (including when the key is missing) every
+    candidate and re-entry still travels this module and still becomes a REVIEW/WATCH -- what
+    it may not become is a binding BUY carrying a share count, a dollar amount, a target
+    position or a stop to place.
+    """
     out = []
+    if not entry_decisions_enabled(cfg):
+        out.append(P0A_BUY_BLOCK_REASON)
     if (cash or 0) <= 0:
         out.append("已核实现金为 $%s（非正）→ 本报告不产生买入；**不依赖本轮建议卖出的预计回款**，"
                    "成交出现在下一份 IBKR 账面后再重新评估" % format(round(cash or 0), ","))

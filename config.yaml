@@ -45,6 +45,11 @@ risk:                              # 移植 ai-hedge-fund risk_manager
   # 单票硬顶：**固定 $30,000 绝对上限**（用户 2026-08-28 拍板，基于全体财富风险承受能力）。
   # 这是唯一权威值。它不是任何东西的百分比，也不随嘉信侧估值漂移。
   single_name_hard_cap_usd: 30000
+  # P0A 开关（用户 2026-09-01 拍板）：本轮只交付「持仓卖出 / 风控 / 组合裁决」，
+  # 可执行买入等待 P0B（数据齐备 + 入场规则验收）。false = 候选票与再入场票仍产生
+  # WATCH/REVIEW，但**永不**产生绑定 BUY，也不显示买入股数/金额/目标仓位/止损挂单。
+  # 缺这个 key 时按 false 处理（fail-closed），不存在"默认打开"的路径。
+  entry_decisions_enabled: false
   single_name_hard_cap_pct_of_total: 12     # 【已弃用】仅在缺 single_name_hard_cap_usd 时回退一个迁移周期
   # 波动率→上限 与 相关性→乘数 见 risk.py（与源码一致）
   no_chase_bias_threshold_pct: 5.0            # ZhuLinsen 默认；强趋势放宽 1.5x

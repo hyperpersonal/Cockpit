@@ -12,12 +12,30 @@ derivation (account.total_assets_usd x risk.single_name_hard_cap_pct_of_total) m
 ceiling silently moved whenever the Schwab side -- which this system does not manage -- was
 re-estimated. Those two keys are kept for ONE migration cycle as a fallback and emit a
 deprecation notice; they no longer decide the number when the authoritative key is present.
+
+entry_decisions_enabled
+-----------------------
+P0A (2026-09-01): the sell / position-risk / portfolio-adjudication half of the engine is
+accepted; the BUY half is not. Candidate scoring feeds it, and the three entry conditions
+(Serenity-14, VCP, dilution) are not computed by this system at all -- every production
+candidate resolves to WATCH today only because the verification gate happens to catch it.
+That is a coincidence, not a control: one config edit or one enriched candidate record would
+turn it into an executable order that nobody has validated end to end.
+
+So the switch is explicit and it FAILS CLOSED. A missing key means disabled. Only a literal
+true enables buys, and production config.yaml keeps it false until P0B is accepted.
 """
 from __future__ import annotations
 
 KEY = "single_name_hard_cap_usd"
 LEGACY_TOTAL = "total_assets_usd"
 LEGACY_PCT = "single_name_hard_cap_pct_of_total"
+
+ENTRY_FLAG_KEY = "entry_decisions_enabled"
+_TRUE = ("true", "yes", "on", "1")
+
+# The exact first-screen wording the user specified for the P0A block (2026-09-01).
+P0A_BUY_BLOCK_REASON = "P0A 仅启用持仓卖出/风控裁决；可执行买入等待 P0B 数据与规则验收。"
 
 
 def hard_cap_usd(cfg) -> float:
@@ -50,3 +68,23 @@ def deprecation_notices(cfg) -> list:
                        % (LEGACY_TOTAL, LEGACY_PCT, format(int(legacy), ","), KEY,
                           format(int(hard_cap_usd(cfg)), ",")))
     return out
+
+
+def entry_decisions_enabled(cfg) -> bool:
+    """May this run produce a BINDING buy? Fails closed.
+
+    Absent key -> False. Anything that is not literally true -> False. There is deliberately
+    no `.get(KEY, True)` anywhere: a default that opens the buy path is a default that opens
+    it silently the first time someone hands the engine a config it has not seen.
+    """
+    v = ((cfg or {}).get("risk") or {}).get(ENTRY_FLAG_KEY)
+    if v is True:
+        return True
+    if isinstance(v, str):
+        return v.strip().lower() in _TRUE
+    return False
+
+
+def entry_block_reason(cfg):
+    """The reason string when buys are off, or None when they are on."""
+    return None if entry_decisions_enabled(cfg) else P0A_BUY_BLOCK_REASON

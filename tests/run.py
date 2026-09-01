@@ -43,6 +43,7 @@ def main(argv):
         suite.addTests(loader.discover(HERE, pattern="test_theme_allocation.py", top_level_dir=HERE))
         suite.addTests(loader.discover(HERE, pattern="test_pipeline_sequential.py", top_level_dir=HERE))
         suite.addTests(loader.discover(HERE, pattern="test_entry_decisions.py", top_level_dir=HERE))
+        suite.addTests(loader.discover(HERE, pattern="test_p0a_*.py", top_level_dir=HERE))
 
     res = unittest.TextTestRunner(verbosity=1, stream=sys.stdout).run(suite)
     red = {_short(t) for t, _ in list(res.failures) + list(res.errors)}

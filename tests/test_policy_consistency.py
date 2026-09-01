@@ -165,8 +165,19 @@ class TestHeatSemanticsAreNotSelfContradictory(unittest.TestCase):
         self.assertIn("不要求你为了把在险打回", self._heat_reason())
 
     def _heat_reason(self):
-        seg = self.SRC.split("elif portfolio_heat_pct is not None and portfolio_heat_pct >= 6.0:")[1]
-        return seg.split("action_md = ")[0]
+        """The heat wording as the gate actually produces it.
+
+        This used to slice daily_brief.py's source between two anchors. P0A moved the gate
+        into `_buy_gate_reason()`, and a source-slicing test cannot tell "the wording moved"
+        from "the wording is gone" -- so it now calls the gate. Buys are switched ON here on
+        purpose: with the P0A boundary in force the heat branch is never reached, and a test
+        that silently stopped exercising the heat rule would be worth nothing.
+        """
+        from cockpit import daily_brief
+        import copy as _copy
+        cfg = _copy.deepcopy(CFG)
+        cfg.setdefault("risk", {})["entry_decisions_enabled"] = True
+        return daily_brief._buy_gate_reason(cfg, 50000.0, 14.5, 31842.02)
 
     def test_heat_does_not_change_the_sell_total(self):
         """The number must be identical whether heat is 14.5% or 0.5%."""

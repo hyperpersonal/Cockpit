@@ -723,6 +723,31 @@ def _cash_routing_md(sell_total, cash):
     return "\n".join(L) + "\n\n"
 
 
+def _buy_gate_reason(cfg, cash, heat_pct, sell_total):
+    """Why buying is blocked today, or None if nothing blocks it.
+
+    Pure on purpose: build() cannot run without the network, so a gate that lives only inside
+    build() is a gate no test can observe. Heat has ONE meaning (user decision 2026-08-28): it
+    gates ADDING risk and never produces a sell amount.
+
+    Order matters and is not cosmetic. The P0A acceptance boundary is evaluated FIRST, ahead of
+    every market condition: "this half of the engine is not accepted yet" is a different
+    statement from "the market says no today", and on a day with positive cash and low heat the
+    market conditions say nothing at all. policy.entry_block_reason() fails closed.
+    """
+    p0a = policy.entry_block_reason(cfg)
+    if p0a:
+        return p0a
+    if (cash or 0) < -100:
+        return ("保证金使用中（现金 $%s）→ **暂停新增风险**：负债清零前不开新仓、不补杠杆产品"
+                "（红线 v2 ③）" % format(round(cash), ","))
+    if heat_pct is not None and heat_pct >= 6.0:
+        return ("组合在险 %.1f%% 高于 6-8%% 预算 → **暂停新增风险**：今天不开新仓、不加仓。"
+                "**它不要求你为了把在险打回 6-8%% 而机械卖出**——卖出金额只由上面的绑定规则决定"
+                "（本次合计 $%s）。" % (heat_pct, format(int(sell_total or 0), ",")))
+    return None
+
+
 def _followups_md(candidates, reentries, heat_pct, mkt, theme_alerts, may_buy):
     """Everything that is NOT an adjudicated position decision: buy candidates, wait prices,
     re-entry prompts, theme lamp. None of these may print a sell amount -- the action list
@@ -862,18 +887,7 @@ def build() -> str:
     sell_total = total_sell_value(decisions)
     lev_usd = sum((holdings_snapshot.get(t, {}).get("market_value") or 0)
                   for t in holdings_snapshot if r_conc.leverage_of(t, CFG) > 1.0)
-    # Heat has ONE meaning and one only (user decision 2026-08-28): it is a gate on ADDING
-    # risk, and it never produces a sell amount. The previous wording showed a ⛔ next to the
-    # sentence "this is a warning, not a prohibition" -- the reader could not tell which half
-    # to believe. It does prohibit new buying; what it does NOT do is demand selling.
-    buy_block = None
-    if (cash or 0) < -100:
-        buy_block = ("保证金使用中（现金 $%s）→ **暂停新增风险**：负债清零前不开新仓、不补杠杆产品"
-                     "（红线 v2 ③）" % format(round(cash), ","))
-    elif portfolio_heat_pct is not None and portfolio_heat_pct >= 6.0:
-        buy_block = ("组合在险 %.1f%% 高于 6-8%% 预算 → **暂停新增风险**：今天不开新仓、不加仓。"
-                     "**它不要求你为了把在险打回 6-8%% 而机械卖出**——卖出金额只由上面的绑定规则决定"
-                     "（本次合计 $%s）。" % (portfolio_heat_pct, format(int(sell_total), ",")))
+    buy_block = _buy_gate_reason(CFG, cash, portfolio_heat_pct, sell_total)
     action_md = action_list.render(
         decisions, dec_reasons, as_of=as_of_label, net_liq=net_liq, cash=cash,
         leverage_pct=(lev_usd / net_liq * 100) if net_liq else 0,
