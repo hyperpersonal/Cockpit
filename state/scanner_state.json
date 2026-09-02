@@ -1026,7 +1026,7 @@
   "FRSH": "Software - Application"
  },
  "universe_date": "2026-09-01",
- "cursor": 250,
+ "cursor": 500,
  "hits": {
   "CHYM": {
    "first_seen": "2026-08-24",
@@ -1046,43 +1046,19 @@
   },
   "DINO": {
    "first_seen": "2026-08-24",
-   "last_seen": "2026-08-28",
-   "off_high": -1.5,
-   "rs": 42.5,
+   "last_seen": "2026-09-02",
+   "off_high": -0.0,
+   "rs": 53.6,
    "industry": "Oil & Gas Refining & Marketing",
-   "price": 97
-  },
-  "FCX": {
-   "first_seen": "2026-08-24",
-   "last_seen": "2026-08-28",
-   "off_high": -2.3,
-   "rs": 22.6,
-   "industry": "Copper",
-   "price": 78.43
-  },
-  "HNGE": {
-   "first_seen": "2026-08-24",
-   "last_seen": "2026-08-28",
-   "off_high": -2.8,
-   "rs": 59.1,
-   "industry": "Medical - Healthcare Information Services",
-   "price": 92.85
-  },
-  "ILMN": {
-   "first_seen": "2026-08-24",
-   "last_seen": "2026-08-28",
-   "off_high": -1.8,
-   "rs": 44.1,
-   "industry": "Medical - Diagnostics & Research",
-   "price": 227.69
+   "price": 103.97
   },
   "IQV": {
    "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
-   "off_high": -1.1,
-   "rs": 22.1,
+   "last_seen": "2026-09-02",
+   "off_high": -2.6,
+   "rs": 21.2,
    "industry": "Medical - Diagnostics & Research",
-   "price": 262.38
+   "price": 258.35
   },
   "MANH": {
    "first_seen": "2026-08-25",
@@ -1172,14 +1148,6 @@
    "industry": "Software - Application",
    "price": 30.22
   },
-  "GH": {
-   "first_seen": "2026-08-26",
-   "last_seen": "2026-08-26",
-   "off_high": -2.5,
-   "rs": 42.0,
-   "industry": "Medical - Diagnostics & Research",
-   "price": 172.17
-  },
   "OKTA": {
    "first_seen": "2026-08-28",
    "last_seen": "2026-08-28",
@@ -1222,11 +1190,11 @@
   },
   "DT": {
    "first_seen": "2026-08-28",
-   "last_seen": "2026-08-28",
-   "off_high": -1.5,
-   "rs": 20.6,
+   "last_seen": "2026-09-02",
+   "off_high": -3.6,
+   "rs": 20.4,
    "industry": "Software - Application",
-   "price": 53.43
+   "price": 52.86
   },
   "APGE": {
    "first_seen": "2026-09-01",
@@ -1283,6 +1251,86 @@
    "rs": 29.2,
    "industry": "Oil & Gas Refining & Marketing",
    "price": 41.86
+  },
+  "DAR": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -3.3,
+   "rs": 20.7,
+   "industry": "Packaged Foods",
+   "price": 67.7
+  },
+  "DK": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -4.9,
+   "rs": 58.1,
+   "industry": "Oil & Gas Refining & Marketing",
+   "price": 73.34
+  },
+  "DXCM": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -2.6,
+   "rs": 20.9,
+   "industry": "Medical - Devices",
+   "price": 90.14
+  },
+  "FRSH": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -3.8,
+   "rs": 25.1,
+   "industry": "Software - Application",
+   "price": 13.46
+  },
+  "HALO": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -1.8,
+   "rs": 39.4,
+   "industry": "Biotechnology",
+   "price": 107.72
+  },
+  "HP": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -0.7,
+   "rs": 25.4,
+   "industry": "Oil & Gas Drilling",
+   "price": 46.21
+  },
+  "HPQ": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -2.7,
+   "rs": 30.6,
+   "industry": "Computer Hardware",
+   "price": 31.32
+  },
+  "HTFL": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -1.5,
+   "rs": 63.4,
+   "industry": "Medical - Healthcare Information Services",
+   "price": 50.43
+  },
+  "INSW": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -2.5,
+   "rs": 29.1,
+   "industry": "Marine Shipping",
+   "price": 99.76
+  },
+  "ITGR": {
+   "first_seen": "2026-09-02",
+   "last_seen": "2026-09-02",
+   "off_high": -0.6,
+   "rs": 32.5,
+   "industry": "Medical - Devices",
+   "price": 125.39
   }
  },
  "cluster_first_seen": {
@@ -1290,6 +1338,7 @@
   "Oil & Gas Refining & Marketing": "2026-08-25",
   "Software - Application": "2026-08-26",
   "Software - Infrastructure": "2026-08-28",
-  "Biotechnology": "2026-09-01"
+  "Biotechnology": "2026-09-01",
+  "Medical - Devices": "2026-09-02"
  }
 }
