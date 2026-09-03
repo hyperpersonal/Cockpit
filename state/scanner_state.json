@@ -1026,7 +1026,7 @@
   "FRSH": "Software - Application"
  },
  "universe_date": "2026-09-01",
- "cursor": 500,
+ "cursor": 750,
  "hits": {
   "CHYM": {
    "first_seen": "2026-08-24",
@@ -1062,35 +1062,27 @@
   },
   "MANH": {
    "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
-   "off_high": -1.4,
-   "rs": 34.0,
+   "last_seen": "2026-09-03",
+   "off_high": -4.5,
+   "rs": 29.9,
    "industry": "Software - Application",
-   "price": 223.76
+   "price": 216.77
   },
   "MPC": {
    "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
-   "off_high": -1.1,
-   "rs": 45.2,
-   "industry": "Oil & Gas Refining & Marketing",
-   "price": 363.54
-  },
-  "NTRA": {
-   "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
+   "last_seen": "2026-09-03",
    "off_high": -1.3,
-   "rs": 37.3,
-   "industry": "Medical - Diagnostics & Research",
-   "price": 338.7
+   "rs": 54.4,
+   "industry": "Oil & Gas Refining & Marketing",
+   "price": 387
   },
   "PSX": {
    "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
-   "off_high": -2.9,
-   "rs": 33.2,
+   "last_seen": "2026-09-03",
+   "off_high": -0.9,
+   "rs": 42.4,
    "industry": "Oil & Gas Refining & Marketing",
-   "price": 239.81
+   "price": 256.09
   },
   "RGEN": {
    "first_seen": "2026-08-25",
@@ -1147,22 +1139,6 @@
    "rs": 44.5,
    "industry": "Software - Application",
    "price": 30.22
-  },
-  "OKTA": {
-   "first_seen": "2026-08-28",
-   "last_seen": "2026-08-28",
-   "off_high": -1.1,
-   "rs": 65.4,
-   "industry": "Software - Infrastructure",
-   "price": 172.91
-  },
-  "PANW": {
-   "first_seen": "2026-08-28",
-   "last_seen": "2026-08-28",
-   "off_high": -4.0,
-   "rs": 58.6,
-   "industry": "Software - Infrastructure",
-   "price": 382.85
   },
   "RBRK": {
    "first_seen": "2026-08-28",
@@ -1331,10 +1307,73 @@
    "rs": 32.5,
    "industry": "Medical - Devices",
    "price": 125.39
+  },
+  "KRYS": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -3.5,
+   "rs": 20.5,
+   "industry": "Biotechnology",
+   "price": 369.23
+  },
+  "MMED": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -2.7,
+   "rs": 46.7,
+   "industry": "Medical - Equipment & Services",
+   "price": 23.76
+  },
+  "MRK": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -3.4,
+   "rs": 21.3,
+   "industry": "Drug Manufacturers - General",
+   "price": 151.64
+  },
+  "OVV": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -0.9,
+   "rs": 20.2,
+   "industry": "Oil & Gas Exploration & Production",
+   "price": 66.91
+  },
+  "PAYC": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -2.9,
+   "rs": 51.7,
+   "industry": "Software - Application",
+   "price": 236.25
+  },
+  "PBF": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -3.1,
+   "rs": 64.9,
+   "industry": "Oil & Gas Refining & Marketing",
+   "price": 75.48
+  },
+  "PR": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -1.1,
+   "rs": 21.3,
+   "industry": "Oil & Gas Exploration & Production",
+   "price": 23.82
+  },
+  "PTEN": {
+   "first_seen": "2026-09-03",
+   "last_seen": "2026-09-03",
+   "off_high": -1.2,
+   "rs": 32.6,
+   "industry": "Oil & Gas Drilling",
+   "price": 13.15
   }
  },
  "cluster_first_seen": {
-  "Medical - Diagnostics & Research": "2026-08-25",
   "Oil & Gas Refining & Marketing": "2026-08-25",
   "Software - Application": "2026-08-26",
   "Software - Infrastructure": "2026-08-28",

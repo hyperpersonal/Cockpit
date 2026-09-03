@@ -1,60 +1,60 @@
 {
-  "date": "2026-09-02",
+  "date": "2026-09-03",
   "positions": {
     "AAOI": {
       "shares": 113.4287,
       "avg": 114.609240959,
-      "pnl_pct": -6.0
+      "pnl_pct": -9.8
     },
     "ASX": {
       "shares": 120.0,
       "avg": 41.780003,
-      "pnl_pct": -11.6
+      "pnl_pct": -10.4
     },
     "CCXI": {
       "shares": 654.8184,
       "avg": 15.271409304,
-      "pnl_pct": -12.4
+      "pnl_pct": -14.5
     },
     "GLW": {
       "shares": 57.5107,
       "avg": 173.880600445,
-      "pnl_pct": -14.5
+      "pnl_pct": -16.3
     },
     "KLAC": {
       "shares": 49.4851,
       "avg": 202.080690046,
-      "pnl_pct": -13.2
+      "pnl_pct": -15.4
     },
     "MRVL": {
       "shares": 0.741,
       "avg": 187.000002699,
-      "pnl_pct": 13.2
+      "pnl_pct": 12.5
     },
     "MU": {
       "shares": 41.7557,
       "avg": 1077.706119859,
-      "pnl_pct": -11.0
+      "pnl_pct": -13.4
     },
     "ORCL": {
       "shares": 164.617,
       "avg": 182.240104303,
-      "pnl_pct": -18.2
+      "pnl_pct": -22.5
     },
     "RAM": {
       "shares": 1628.7823,
       "avg": 12.279114149,
-      "pnl_pct": 2.9
+      "pnl_pct": -3.4
     },
     "SKHY": {
       "shares": 306.1124,
       "avg": 163.175326785,
-      "pnl_pct": 0.9
+      "pnl_pct": -1.5
     },
     "SOXX": {
       "shares": 8.5838,
       "avg": 582.488781891,
-      "pnl_pct": -12.3
+      "pnl_pct": -14.1
     }
   }
 }
