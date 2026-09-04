@@ -1026,7 +1026,7 @@
   "FRSH": "Software - Application"
  },
  "universe_date": "2026-09-01",
- "cursor": 750,
+ "cursor": 1000,
  "hits": {
   "CHYM": {
    "first_seen": "2026-08-24",
@@ -1084,53 +1084,21 @@
    "industry": "Oil & Gas Refining & Marketing",
    "price": 256.09
   },
-  "RGEN": {
-   "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
-   "off_high": -3.6,
-   "rs": 20.1,
-   "industry": "Medical - Instruments & Supplies",
-   "price": 182.03
-  },
-  "RHI": {
-   "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
-   "off_high": -3.7,
-   "rs": 42.2,
-   "industry": "Staffing & Employment Services",
-   "price": 44.97
-  },
   "ROKU": {
    "first_seen": "2026-08-25",
-   "last_seen": "2026-08-28",
-   "off_high": -2.3,
-   "rs": 25.6,
+   "last_seen": "2026-09-04",
+   "off_high": -1.0,
+   "rs": 26.1,
    "industry": "Entertainment",
-   "price": 156.25
-  },
-  "RVMD": {
-   "first_seen": "2026-08-25",
-   "last_seen": "2026-08-25",
-   "off_high": -4.1,
-   "rs": 57.8,
-   "industry": "Biotechnology",
-   "price": 211.415
-  },
-  "SN": {
-   "first_seen": "2026-08-25",
-   "last_seen": "2026-08-25",
-   "off_high": -3.8,
-   "rs": 40.2,
-   "industry": "Furnishings, Fixtures & Appliances",
-   "price": 183.9
+   "price": 158.31
   },
   "SSRM": {
    "first_seen": "2026-08-25",
-   "last_seen": "2026-08-25",
-   "off_high": -0.4,
-   "rs": 34.7,
+   "last_seen": "2026-09-04",
+   "off_high": -1.4,
+   "rs": 30.4,
    "industry": "Gold",
-   "price": 39.0536
+   "price": 38.89
   },
   "ZETA": {
    "first_seen": "2026-08-26",
@@ -1140,21 +1108,13 @@
    "industry": "Software - Application",
    "price": 30.22
   },
-  "RBRK": {
-   "first_seen": "2026-08-28",
-   "last_seen": "2026-08-28",
-   "off_high": -0.8,
-   "rs": 47.8,
-   "industry": "Software - Infrastructure",
-   "price": 107.02
-  },
   "VLO": {
    "first_seen": "2026-08-28",
-   "last_seen": "2026-08-28",
-   "off_high": -1.8,
-   "rs": 39.3,
+   "last_seen": "2026-09-04",
+   "off_high": -1.2,
+   "rs": 47.2,
    "industry": "Oil & Gas Refining & Marketing",
-   "price": 346.59
+   "price": 370.69
   },
   "CRWD": {
    "first_seen": "2026-08-28",
@@ -1371,6 +1331,86 @@
    "rs": 32.6,
    "industry": "Oil & Gas Drilling",
    "price": 13.15
+  },
+  "RELY": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -2.0,
+   "rs": 36.2,
+   "industry": "Software - Infrastructure",
+   "price": 26.92
+  },
+  "RNG": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -2.0,
+   "rs": 85.3,
+   "industry": "Software - Application",
+   "price": 76.36
+  },
+  "RPRX": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -0.1,
+   "rs": 21.7,
+   "industry": "Medical - Pharmaceuticals",
+   "price": 63.88
+  },
+  "SM": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -3.4,
+   "rs": 32.7,
+   "industry": "Oil & Gas Exploration & Production",
+   "price": 37.6
+  },
+  "STT": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -1.0,
+   "rs": 22.2,
+   "industry": "Asset Management",
+   "price": 193.94
+  },
+  "TGT": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -3.9,
+   "rs": 26.0,
+   "industry": "Discount Stores",
+   "price": 164.01
+  },
+  "TGTX": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -4.4,
+   "rs": 37.6,
+   "industry": "Biotechnology",
+   "price": 56.71
+  },
+  "TVTX": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -2.2,
+   "rs": 49.3,
+   "industry": "Biotechnology",
+   "price": 66.54
+  },
+  "VOYA": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -0.7,
+   "rs": 20.4,
+   "industry": "Insurance - Life",
+   "price": 104.86
+  },
+  "WHD": {
+   "first_seen": "2026-09-04",
+   "last_seen": "2026-09-04",
+   "off_high": -3.3,
+   "rs": 23.1,
+   "industry": "Oil & Gas Equipment & Services",
+   "price": 71.64
   }
  },
  "cluster_first_seen": {
@@ -1378,6 +1418,7 @@
   "Software - Application": "2026-08-26",
   "Software - Infrastructure": "2026-08-28",
   "Biotechnology": "2026-09-01",
-  "Medical - Devices": "2026-09-02"
+  "Medical - Devices": "2026-09-02",
+  "Oil & Gas Exploration & Production": "2026-09-04"
  }
 }
